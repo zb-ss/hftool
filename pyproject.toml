@@ -38,13 +38,44 @@ dependencies = [
 
 [project.optional-dependencies]
 # For handling image inputs (local files or URLs)
-image = ["Pillow>=9.0.0"]
+with_image = ["Pillow>=9.0.0"]
 # For handling audio inputs (local files or URLs)
-audio = ["soundfile>=0.12.0"]
+with_audio = ["soundfile>=0.12.0"]
 # For handling URL inputs (requires appropriate task-specific library too, e.g., Pillow for image URLs)
-http = ["requests>=2.20.0"]
-# Combined extras - reference the other extras defined in this table
-all = ["image", "audio", "http"]
+with_http = ["requests>=2.20.0"]
+# For handling diffuser pipelines (e.g., text-to-image)
+with_diffusers = [
+    "diffusers>=0.11.0", # Use an appropriate version constraint
+    "Pillow>=9.0.0",     # Required for image handling (also needed by with_image)
+    "accelerate",        # Recommended for performance
+    # Note: diffusers often implicitly requires transformers and torch
+]
+# For advanced audio processing (e.g., feature extraction)
+with_audio_advanced = [
+    "soundfile>=0.12.0", # Keep base dependency
+    "librosa>=0.9.0",    # Add librosa
+    "scipy"              # Often needed by librosa
+]
+# For advanced computer vision processing
+with_vision_advanced = [
+     "Pillow>=9.0.0", # Keep base dependency
+     "opencv-python-headless>=4.5.0" # Add OpenCV
+]
+# For model quantization (requires CUDA-enabled GPU and Linux typically)
+with_quantization = ["bitsandbytes>=0.39.0"] # Check for appropriate version
+
+# Combined extras - explicitly list all dependencies from other extras
+all = [
+    "Pillow>=9.0.0",      # from with_image, with_diffusers, with_vision_advanced
+    "soundfile>=0.12.0",  # from with_audio
+    "requests>=2.20.0",   # from with_http
+    "diffusers>=0.11.0",  # from with_diffusers
+    "accelerate",         # from with_diffusers
+    "librosa>=0.9.0",     # from with_audio_advanced
+    "scipy",              # from with_audio_advanced
+    "opencv-python-headless>=4.5.0", # from with_vision_advanced
+    "bitsandbytes>=0.39.0", # from with_quantization
+]
 
 [project.scripts]
 hftool = "hftool.cli:main"
