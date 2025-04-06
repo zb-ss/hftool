@@ -3,17 +3,17 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hftool" # Changed name
+name = "hftool"
 version = "0.1.0"
 description = "A command-line interface for interacting with Hugging Face transformer models via the pipeline function."
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT License"}
 authors = [
-  {name = "Your Name", email = "your.email@example.com"}, # Placeholder
+  {name = "zashboy", email = "zashboy@gmail.com"},
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha", # Keep relevant classifiers
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
@@ -31,12 +31,12 @@ classifiers = [
 ]
 
 dependencies = [
-    "transformers>=4.0.0", # Specify base transformers
-    "torch>=1.9.0",        # Explicitly add torch
+    "transformers>=4.0.0",
+    "torch>=1.9.0",
     "click>=8.0.0",
 ]
 
-[project.optional-dependencies] # Use table header syntax
+[project.optional-dependencies]
 # For handling image inputs (local files or URLs)
 image = ["Pillow>=9.0.0"]
 # For handling audio inputs (local files or URLs)
@@ -44,11 +44,11 @@ audio = ["soundfile>=0.12.0"]
 # For handling URL inputs (requires appropriate task-specific library too, e.g., Pillow for image URLs)
 http = ["requests>=2.20.0"]
 # Combined extras - reference the other extras defined in this table
-all = ["image", "audio", "http"] # Keys are defined directly under the header
+all = ["image", "audio", "http"]
 
 [project.scripts]
-hftool = "hftool.cli:main" # Updated entry point
+hftool = "hftool.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/placeholder/hftool" # Placeholder
-Repository = "https://github.com/placeholder/hftool" # Placeholder
+Homepage = "https://github.com/zashboy-websites/hftool"
+Repository = "https://github.com/zashboy-websites/hftool"
