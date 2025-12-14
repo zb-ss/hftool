@@ -4,21 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hftool"
-version = "0.1.0"
-description = "A command-line interface for interacting with Hugging Face transformer models via the pipeline function."
+version = "0.2.0"
+description = "A CLI for Hugging Face models: text-to-image, text-to-video, TTS, ASR, and more."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT License"}
 authors = [
   {name = "zashboy", email = "zashboy@gmail.com"},
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -31,50 +30,87 @@ classifiers = [
 ]
 
 dependencies = [
-    "transformers>=4.0.0",
-    "torch>=1.9.0",
+    "transformers>=4.45.0",
+    "torch>=2.0.0",
     "click>=8.0.0",
 ]
 
 [project.optional-dependencies]
-# For handling image inputs (local files or URLs)
+# Image handling (for image inputs/outputs)
 with_image = ["Pillow>=9.0.0"]
-# For handling audio inputs (local files or URLs)
-with_audio = ["soundfile>=0.12.0"]
-# For handling URL inputs (requires appropriate task-specific library too, e.g., Pillow for image URLs)
-with_http = ["requests>=2.20.0"]
-# For handling diffuser pipelines (e.g., text-to-image)
-with_diffusers = [
-    "diffusers>=0.11.0", # Use an appropriate version constraint
-    "Pillow>=9.0.0",     # Required for image handling (also needed by with_image)
-    "accelerate",        # Recommended for performance
-    # Note: diffusers often implicitly requires transformers and torch
-]
-# For advanced audio processing (e.g., feature extraction)
-with_audio_advanced = [
-    "soundfile>=0.12.0", # Keep base dependency
-    "librosa>=0.9.0",    # Add librosa
-    "scipy"              # Often needed by librosa
-]
-# For advanced computer vision processing
-with_vision_advanced = [
-     "Pillow>=9.0.0", # Keep base dependency
-     "opencv-python-headless>=4.5.0" # Add OpenCV
-]
-# For model quantization (requires CUDA-enabled GPU and Linux typically)
-with_quantization = ["bitsandbytes>=0.39.0"] # Check for appropriate version
 
-# Combined extras - explicitly list all dependencies from other extras
+# Audio handling (for TTS/ASR)
+with_audio = ["soundfile>=0.12.0"]
+
+# HTTP support (for URL inputs)
+with_http = ["requests>=2.20.0"]
+
+# Text-to-Image generation (Z-Image, SDXL, FLUX)
+with_t2i = [
+    "diffusers>=0.32.0",
+    "Pillow>=9.0.0",
+    "accelerate>=0.26.0",
+]
+
+# Text-to-Video generation (HunyuanVideo, CogVideoX, Wan2.2)
+# Requires system ffmpeg for video encoding
+with_t2v = [
+    "diffusers>=0.32.0",
+    "Pillow>=9.0.0",
+    "accelerate>=0.26.0",
+]
+
+# Text-to-Speech (VibeVoice, Bark, MMS-TTS)
+# Requires system ffmpeg for MP3 conversion
+with_tts = [
+    "transformers>=4.45.0",
+    "soundfile>=0.12.0",
+]
+
+# Speech-to-Text / ASR (Whisper)
+with_stt = [
+    "transformers>=4.45.0",
+    "soundfile>=0.12.0",
+]
+
+# Advanced audio processing (resampling, feature extraction)
+with_audio_advanced = [
+    "soundfile>=0.12.0",
+    "librosa>=0.9.0",
+    "scipy",
+]
+
+# Advanced vision processing
+with_vision_advanced = [
+    "Pillow>=9.0.0",
+    "opencv-python-headless>=4.5.0",
+]
+
+# Model quantization (requires CUDA/ROCm)
+with_quantization = ["bitsandbytes>=0.39.0"]
+
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+# All dependencies (for full functionality)
 all = [
-    "Pillow>=9.0.0",      # from with_image, with_diffusers, with_vision_advanced
-    "soundfile>=0.12.0",  # from with_audio
-    "requests>=2.20.0",   # from with_http
-    "diffusers>=0.11.0",  # from with_diffusers
-    "accelerate",         # from with_diffusers
-    "librosa>=0.9.0",     # from with_audio_advanced
-    "scipy",              # from with_audio_advanced
-    "opencv-python-headless>=4.5.0", # from with_vision_advanced
-    "bitsandbytes>=0.39.0", # from with_quantization
+    # Image
+    "Pillow>=9.0.0",
+    # Audio
+    "soundfile>=0.12.0",
+    # HTTP
+    "requests>=2.20.0",
+    # Diffusers (T2I, T2V)
+    "diffusers>=0.32.0",
+    "accelerate>=0.26.0",
+    # Audio advanced
+    "librosa>=0.9.0",
+    "scipy",
+    # Vision advanced
+    "opencv-python-headless>=4.5.0",
 ]
 
 [project.scripts]
@@ -83,3 +119,14 @@ hftool = "hftool.cli:main"
 [project.urls]
 Homepage = "https://github.com/zashboy-websites/hftool"
 Repository = "https://github.com/zashboy-websites/hftool"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hftool*"]
