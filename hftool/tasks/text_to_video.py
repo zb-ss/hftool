@@ -213,17 +213,71 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         return pipe
     
     def _load_hunyuanvideo(self, model: str, dtype, **kwargs) -> Any:
-        """Load HunyuanVideo-1.5 pipeline."""
-        # dtype is passed for backwards compatibility but torch_dtype should be in kwargs
+        """Load HunyuanVideo-1.5 pipeline.
+        
+        For multi-GPU: Loads transformer with device_map across GPUs,
+        then uses CPU offload for VAE to prevent OOM during decode.
+        """
+        import os
+        import click
+        import torch
+        from hftool.core.device import get_device_info
+        
+        device_info = get_device_info()
+        num_gpus = device_info.device_count
+        
+        # Check if multi-GPU is requested
+        multi_gpu_env = os.environ.get("HFTOOL_MULTI_GPU", "").lower()
+        use_multi_gpu = num_gpus > 1 and multi_gpu_env not in ("0", "false", "no")
+        
+        # Remove device_map from kwargs if present - we handle it specially
+        kwargs.pop("device_map", None)
+        kwargs.pop("max_memory", None)
+        
         if "torch_dtype" not in kwargs:
             kwargs["torch_dtype"] = dtype
+        
         try:
-            from diffusers import HunyuanVideo15Pipeline
-            pipe = HunyuanVideo15Pipeline.from_pretrained(model, **kwargs)
+            if use_multi_gpu:
+                # Multi-GPU: Load transformer distributed across GPUs, VAE with CPU offload
+                click.echo(f"Loading HunyuanVideo with multi-GPU transformer ({num_gpus} GPUs)...")
+                
+                from diffusers import HunyuanVideo15Pipeline, AutoModel
+                
+                # Calculate max memory per GPU for transformer (leave room for other ops)
+                max_memory = {}
+                for i in range(num_gpus):
+                    try:
+                        mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+                        max_memory[i] = f"{int(mem_gb - 4)}GB"  # Reserve 4GB per GPU
+                    except Exception:
+                        pass
+                
+                # Load transformer distributed across GPUs
+                transformer = AutoModel.from_pretrained(
+                    model,
+                    subfolder="transformer",
+                    torch_dtype=dtype,
+                    device_map="auto",
+                    max_memory=max_memory if max_memory else None,
+                )
+                click.echo(f"Transformer distributed: {getattr(transformer, 'hf_device_map', 'single device')}")
+                
+                # Load pipeline without transformer (we'll add it)
+                pipe = HunyuanVideo15Pipeline.from_pretrained(
+                    model,
+                    transformer=transformer,
+                    **kwargs
+                )
+            else:
+                from diffusers import HunyuanVideo15Pipeline
+                pipe = HunyuanVideo15Pipeline.from_pretrained(model, **kwargs)
+                
         except ImportError:
             # Fallback if HunyuanVideo15Pipeline not available
             from diffusers import DiffusionPipeline
             pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
+        
         return pipe
     
     def _load_cogvideox(self, model: str, dtype, **kwargs) -> Any:
