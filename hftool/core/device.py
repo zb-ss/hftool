@@ -4,6 +4,7 @@ Supports ROCm (AMD), CUDA (NVIDIA), MPS (Apple Silicon), and CPU.
 ROCm is the primary target for this project.
 """
 
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -14,6 +15,28 @@ try:
 except ImportError:
     torch = None  # type: ignore
     _TORCH_AVAILABLE = False
+
+
+def configure_rocm_env() -> None:
+    """Configure environment variables for optimal ROCm performance.
+    
+    This should be called early, before PyTorch operations.
+    Sets up experimental features and memory optimizations for AMD GPUs.
+    """
+    # Enable experimental memory-efficient attention for RDNA3 (Navi31, etc.)
+    # This enables AOTriton optimizations for scaled_dot_product_attention
+    if "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL" not in os.environ:
+        os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
+    
+    # Reduce memory fragmentation with expandable segments
+    # Note: PYTORCH_HIP_ALLOC_CONF is deprecated, use PYTORCH_ALLOC_CONF
+    if "PYTORCH_ALLOC_CONF" not in os.environ:
+        os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+    
+    # Use hipBLAS instead of hipBLASLt for better compatibility on consumer GPUs
+    # hipBLASLt is optimized for datacenter GPUs (MI250, MI300) but may not work well on RDNA3
+    if "TORCH_BLAS_PREFER_HIPBLASLT" not in os.environ:
+        os.environ["TORCH_BLAS_PREFER_HIPBLASLT"] = "0"
 
 
 @dataclass
@@ -61,7 +84,11 @@ def is_rocm() -> bool:
     try:
         device_name = torch.cuda.get_device_name(0)
         # AMD GPUs typically have "AMD" or "Radeon" in the name
-        return "AMD" in device_name or "Radeon" in device_name or "gfx" in device_name.lower()
+        rocm_detected = "AMD" in device_name or "Radeon" in device_name or "gfx" in device_name.lower()
+        if rocm_detected:
+            # Configure ROCm-specific optimizations
+            configure_rocm_env()
+        return rocm_detected
     except Exception:
         return False
 

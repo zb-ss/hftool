@@ -81,17 +81,33 @@ class TextToImageTask(TextInputMixin, BaseTask):
         
         Returns:
             Loaded diffusers pipeline
+        
+        Environment Variables:
+            HFTOOL_MULTI_GPU: Control multi-GPU behavior
+                - "1", "true", "yes", "balanced": Use device_map="balanced" to spread across GPUs
+                - "0", "false", "no": Disable multi-GPU, use single GPU
+                - unset: Auto-detect and use multi-GPU if available
+            HFTOOL_CPU_OFFLOAD: Control CPU offload (only when multi-GPU disabled)
+                - "0": Disabled (full GPU)
+                - "1": Model CPU offload
+                - "2": Sequential CPU offload (most memory efficient)
         """
+        import os
+        import click
         from hftool.utils.deps import check_dependencies
         check_dependencies(["diffusers", "torch", "accelerate"], extra="with_video")
         
-        from hftool.core.device import detect_device, get_optimal_dtype
+        import torch
+        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env
         
-        # Determine device and dtype
+        # Configure ROCm optimizations early (before any GPU operations)
+        configure_rocm_env()
+        
+        # Get device info
+        device_info = get_device_info()
         device = self.device if self.device != "auto" else detect_device()
         
         if self.dtype:
-            import torch
             dtype_map = {
                 "bfloat16": torch.bfloat16,
                 "float16": torch.float16,
@@ -103,42 +119,73 @@ class TextToImageTask(TextInputMixin, BaseTask):
         
         self._model_name = model
         
+        # Determine loading strategy
+        num_gpus = device_info.device_count if device == "cuda" else 0
+        
+        # Check multi-GPU settings
+        # HFTOOL_MULTI_GPU: "1"/"true"/"balanced" = use device_map, "0"/"false" = single GPU
+        multi_gpu_env = os.environ.get("HFTOOL_MULTI_GPU", "").lower()
+        force_multi_gpu = multi_gpu_env in ("1", "true", "yes", "balanced")
+        disable_multi_gpu = multi_gpu_env in ("0", "false", "no")
+        
+        # Auto-enable multi-GPU if multiple GPUs available and not explicitly disabled
+        use_multi_gpu = (num_gpus > 1 and not disable_multi_gpu) or force_multi_gpu
+        
+        # Check CPU offload settings (used when multi-GPU is not active)
+        # HFTOOL_CPU_OFFLOAD: 0=disabled (full GPU), 1=model offload, 2=sequential offload
+        cpu_offload_env = os.environ.get("HFTOOL_CPU_OFFLOAD", "").lower()
+        force_cpu_offload = cpu_offload_env in ("1", "2", "true", "yes")
+        disable_cpu_offload = cpu_offload_env in ("0", "false", "no")
+        use_sequential = cpu_offload_env == "2"
+        
         # Try to load with appropriate pipeline
         model_lower = model.lower()
         is_zimage = "z-image" in model_lower or "zimage" in model_lower
         is_flux = "flux" in model_lower
         
         pipe = None
+        load_kwargs = {"torch_dtype": dtype, **kwargs}
+        
+        # Configure device_map for multi-GPU
+        if use_multi_gpu and num_gpus > 1:
+            click.echo(f"Multi-GPU mode: Distributing model across {num_gpus} GPUs...")
+            # Use "balanced" to evenly distribute model components across GPUs
+            load_kwargs["device_map"] = "balanced"
+            # Set max_memory per GPU to help with distribution
+            # Get memory for each GPU
+            max_memory = {}
+            for i in range(num_gpus):
+                try:
+                    mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+                    # Reserve ~2GB for overhead
+                    max_memory[i] = f"{int(mem_gb - 2)}GB"
+                except Exception:
+                    pass
+            if max_memory:
+                load_kwargs["max_memory"] = max_memory
+                click.echo(f"GPU memory allocation: {max_memory}")
+        elif num_gpus > 1:
+            click.echo(f"Multi-GPU detected ({num_gpus} GPUs) but disabled, using single GPU")
         
         # Try ZImagePipeline for Z-Image models
         if is_zimage:
             try:
                 from diffusers import ZImagePipeline
-                pipe = ZImagePipeline.from_pretrained(
-                    model,
-                    torch_dtype=dtype,
-                    **kwargs
-                )
+                pipe = ZImagePipeline.from_pretrained(model, **load_kwargs)
             except ImportError:
-                import click
                 click.echo(
                     "Warning: ZImagePipeline not available. "
                     "Upgrade diffusers: pip install --upgrade diffusers>=0.33.0",
                     err=True
                 )
             except Exception as e:
-                import click
                 click.echo(f"Warning: Failed to load ZImagePipeline: {e}", err=True)
         
         # Try FluxPipeline for FLUX models
         if pipe is None and is_flux:
             try:
                 from diffusers import FluxPipeline
-                pipe = FluxPipeline.from_pretrained(
-                    model,
-                    torch_dtype=dtype,
-                    **kwargs
-                )
+                pipe = FluxPipeline.from_pretrained(model, **load_kwargs)
             except ImportError:
                 pass
             except Exception:
@@ -150,9 +197,8 @@ class TextToImageTask(TextInputMixin, BaseTask):
                 from diffusers import DiffusionPipeline
                 pipe = DiffusionPipeline.from_pretrained(
                     model,
-                    torch_dtype=dtype,
                     trust_remote_code=True,
-                    **kwargs
+                    **load_kwargs
                 )
             except Exception:
                 pass
@@ -160,24 +206,62 @@ class TextToImageTask(TextInputMixin, BaseTask):
         # Final fallback to AutoPipelineForText2Image
         if pipe is None:
             from diffusers import AutoPipelineForText2Image
-            pipe = AutoPipelineForText2Image.from_pretrained(
-                model,
-                torch_dtype=dtype,
-                **kwargs
-            )
+            pipe = AutoPipelineForText2Image.from_pretrained(model, **load_kwargs)
         
-        # Move to device
-        pipe.to(device)
-        
-        # Enable memory optimizations for ROCm
+        # Enable memory optimizations
         try:
-            from hftool.core.device import is_rocm
-            if is_rocm():
-                # Enable attention slicing for better memory efficiency
-                if hasattr(pipe, "enable_attention_slicing"):
-                    pipe.enable_attention_slicing()
-        except Exception:
-            pass
+            # Enable VAE slicing for large images
+            if hasattr(pipe, "enable_vae_slicing"):
+                pipe.enable_vae_slicing()
+            
+            # Enable VAE tiling for very large images
+            if hasattr(pipe, "enable_vae_tiling"):
+                pipe.enable_vae_tiling()
+        except Exception as e:
+            click.echo(f"Note: Could not enable all memory optimizations: {e}", err=True)
+        
+        # If multi-GPU with device_map was used, the model is already distributed
+        # Check if pipeline has been placed on devices via device_map
+        has_device_map = hasattr(pipe, "hf_device_map") and pipe.hf_device_map
+        
+        if has_device_map:
+            click.echo(f"Model distributed across devices: {pipe.hf_device_map}")
+        else:
+            # No device_map, apply single-GPU or CPU offload strategy
+            if disable_cpu_offload:
+                # User explicitly wants full GPU mode
+                click.echo(f"Loading model fully on {device}...")
+                pipe.to(device)
+            elif use_sequential or (force_cpu_offload and cpu_offload_env == "2"):
+                # Sequential offload - most memory efficient, slower
+                if hasattr(pipe, "enable_sequential_cpu_offload"):
+                    click.echo("Enabling sequential CPU offload (memory-efficient mode)...")
+                    pipe.enable_sequential_cpu_offload()
+                else:
+                    pipe.to(device)
+            elif force_cpu_offload:
+                # Model offload - faster than sequential but needs more VRAM
+                if hasattr(pipe, "enable_model_cpu_offload"):
+                    click.echo("Enabling model CPU offload...")
+                    pipe.enable_model_cpu_offload()
+                else:
+                    pipe.to(device)
+            else:
+                # Auto mode - try full GPU first, fall back to CPU offload if needed
+                click.echo(f"Loading model on {device}...")
+                try:
+                    pipe.to(device)
+                except RuntimeError as e:
+                    if "out of memory" in str(e).lower():
+                        click.echo("GPU memory insufficient, enabling CPU offload...")
+                        if hasattr(pipe, "enable_model_cpu_offload"):
+                            pipe.enable_model_cpu_offload()
+                        elif hasattr(pipe, "enable_sequential_cpu_offload"):
+                            pipe.enable_sequential_cpu_offload()
+                        else:
+                            raise
+                    else:
+                        raise
         
         return pipe
     

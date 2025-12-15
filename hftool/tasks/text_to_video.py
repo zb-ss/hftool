@@ -78,18 +78,34 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         
         Returns:
             Loaded diffusers pipeline
+        
+        Environment Variables:
+            HFTOOL_MULTI_GPU: Control multi-GPU behavior
+                - "1", "true", "yes", "balanced": Use device_map="balanced" to spread across GPUs
+                - "0", "false", "no": Disable multi-GPU, use single GPU
+                - unset: Auto-detect and use multi-GPU if available
+            HFTOOL_CPU_OFFLOAD: Control CPU offload (only when multi-GPU disabled)
+                - "0": Disabled (full GPU)
+                - "1": Model CPU offload (default)
+                - "2": Sequential CPU offload (most memory efficient)
         """
+        import os
+        import click
         from hftool.utils.deps import check_dependencies, check_ffmpeg
         check_dependencies(["diffusers", "torch", "accelerate"], extra="with_video")
         check_ffmpeg()
         
-        from hftool.core.device import detect_device, get_optimal_dtype
+        import torch
+        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env
         
-        # Determine device and dtype
+        # Configure ROCm optimizations early (before any GPU operations)
+        configure_rocm_env()
+        
+        # Get device info
+        device_info = get_device_info()
         device = self.device if self.device != "auto" else detect_device()
         
         if self.dtype:
-            import torch
             dtype_map = {
                 "bfloat16": torch.bfloat16,
                 "float16": torch.float16,
@@ -102,75 +118,105 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         self._model_name = model
         model_lower = model.lower()
         
+        # Determine loading strategy
+        num_gpus = device_info.device_count if device == "cuda" else 0
+        
+        # Check multi-GPU settings
+        multi_gpu_env = os.environ.get("HFTOOL_MULTI_GPU", "").lower()
+        force_multi_gpu = multi_gpu_env in ("1", "true", "yes", "balanced")
+        disable_multi_gpu = multi_gpu_env in ("0", "false", "no")
+        use_multi_gpu = (num_gpus > 1 and not disable_multi_gpu) or force_multi_gpu
+        
+        # Check CPU offload settings
+        cpu_offload_env = os.environ.get("HFTOOL_CPU_OFFLOAD", "").lower()
+        disable_cpu_offload = cpu_offload_env in ("0", "false", "no")
+        
+        # Prepare load kwargs
+        load_kwargs = {"torch_dtype": dtype, **kwargs}
+        
+        # Configure device_map for multi-GPU
+        if use_multi_gpu and num_gpus > 1:
+            click.echo(f"Multi-GPU mode: Distributing model across {num_gpus} GPUs...")
+            load_kwargs["device_map"] = "balanced"
+            max_memory = {}
+            for i in range(num_gpus):
+                try:
+                    mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+                    max_memory[i] = f"{int(mem_gb - 2)}GB"
+                except Exception:
+                    pass
+            if max_memory:
+                load_kwargs["max_memory"] = max_memory
+                click.echo(f"GPU memory allocation: {max_memory}")
+        elif num_gpus > 1:
+            click.echo(f"Multi-GPU detected ({num_gpus} GPUs) but disabled, using single GPU")
+        
         # Load model-specific pipelines
         if "hunyuanvideo" in model_lower:
-            pipe = self._load_hunyuanvideo(model, dtype, **kwargs)
+            pipe = self._load_hunyuanvideo(model, dtype, **load_kwargs)
         elif "cogvideo" in model_lower:
-            pipe = self._load_cogvideox(model, dtype, **kwargs)
+            pipe = self._load_cogvideox(model, dtype, **load_kwargs)
         elif "wan" in model_lower:
-            pipe = self._load_wan(model, dtype, **kwargs)
+            pipe = self._load_wan(model, dtype, **load_kwargs)
         else:
             # Generic video pipeline
             from diffusers import DiffusionPipeline
-            pipe = DiffusionPipeline.from_pretrained(
-                model,
-                torch_dtype=dtype,
-                **kwargs
-            )
+            pipe = DiffusionPipeline.from_pretrained(model, **load_kwargs)
         
-        # Enable memory optimizations
-        if hasattr(pipe, "enable_model_cpu_offload"):
-            pipe.enable_model_cpu_offload()
+        # Enable VAE optimizations
         if hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_tiling"):
             pipe.vae.enable_tiling()
+        if hasattr(pipe, "enable_vae_slicing"):
+            pipe.enable_vae_slicing()
+        
+        # Check if pipeline has been placed on devices via device_map
+        has_device_map = hasattr(pipe, "hf_device_map") and pipe.hf_device_map
+        
+        if has_device_map:
+            click.echo(f"Model distributed across devices: {pipe.hf_device_map}")
+        elif not disable_cpu_offload:
+            # Enable CPU offload for memory efficiency (video models are large)
+            if hasattr(pipe, "enable_model_cpu_offload"):
+                click.echo("Enabling model CPU offload...")
+                pipe.enable_model_cpu_offload()
+        else:
+            click.echo(f"Loading model on {device}...")
+            pipe.to(device)
         
         return pipe
     
     def _load_hunyuanvideo(self, model: str, dtype, **kwargs) -> Any:
         """Load HunyuanVideo-1.5 pipeline."""
+        # dtype is passed for backwards compatibility but torch_dtype should be in kwargs
+        if "torch_dtype" not in kwargs:
+            kwargs["torch_dtype"] = dtype
         try:
             from diffusers import HunyuanVideo15Pipeline
-            pipe = HunyuanVideo15Pipeline.from_pretrained(
-                model,
-                torch_dtype=dtype,
-                **kwargs
-            )
+            pipe = HunyuanVideo15Pipeline.from_pretrained(model, **kwargs)
         except ImportError:
             # Fallback if HunyuanVideo15Pipeline not available
             from diffusers import DiffusionPipeline
-            pipe = DiffusionPipeline.from_pretrained(
-                model,
-                torch_dtype=dtype,
-                **kwargs
-            )
+            pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
         return pipe
     
     def _load_cogvideox(self, model: str, dtype, **kwargs) -> Any:
         """Load CogVideoX pipeline."""
+        if "torch_dtype" not in kwargs:
+            kwargs["torch_dtype"] = dtype
         if self.mode == "i2v" or "i2v" in model.lower():
             from diffusers import CogVideoXImageToVideoPipeline
-            pipe = CogVideoXImageToVideoPipeline.from_pretrained(
-                model,
-                torch_dtype=dtype,
-                **kwargs
-            )
+            pipe = CogVideoXImageToVideoPipeline.from_pretrained(model, **kwargs)
         else:
             from diffusers import CogVideoXPipeline
-            pipe = CogVideoXPipeline.from_pretrained(
-                model,
-                torch_dtype=dtype,
-                **kwargs
-            )
+            pipe = CogVideoXPipeline.from_pretrained(model, **kwargs)
         return pipe
     
     def _load_wan(self, model: str, dtype, **kwargs) -> Any:
         """Load Wan2.x pipeline."""
+        if "torch_dtype" not in kwargs:
+            kwargs["torch_dtype"] = dtype
         from diffusers import DiffusionPipeline
-        pipe = DiffusionPipeline.from_pretrained(
-            model,
-            torch_dtype=dtype,
-            **kwargs
-        )
+        pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
         return pipe
     
     def get_default_kwargs(self) -> Dict[str, Any]:

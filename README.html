@@ -35,23 +35,44 @@ Apple MPS, and CPU).</p>
 <h3 id="quick-install">Quick Install</h3>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install hftool</span></code></pre></div>
+<p>On first run, hftool will detect if PyTorch is missing or
+misconfigured and offer to install it for you:</p>
+<pre><code>============================================================
+  hftool - First Time Setup
+============================================================
+
+Detected hardware:
+  [✓] AMD GPU detected: Radeon RX 7900 XTX
+
+Select PyTorch version to install:
+
+  [1] NVIDIA GPU (CUDA)
+  [2] AMD GPU (ROCm 6.2) (recommended)
+  [3] Apple Silicon (MPS)
+  [4] CPU only
+  [5] Skip (install manually later)
+
+Your choice [2]:</code></pre>
+<p>You can also run the setup wizard manually at any time:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> setup</span></code></pre></div>
 <h3 id="install-with-specific-features">Install with Specific
 Features</h3>
-<div class="sourceCode" id="cb2"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Text-to-Image (Z-Image, SDXL, FLUX)</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[with_t2i]&quot;</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Text-to-Video (HunyuanVideo, CogVideoX, Wan2.2)</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[with_t2v]&quot;</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Text-to-Speech (VibeVoice, Bark, MMS-TTS)</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[with_tts]&quot;</span></span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Speech-to-Text (Whisper)</span></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[with_stt]&quot;</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co"># All features</span></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[all]&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Text-to-Image (Z-Image, SDXL, FLUX)</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[with_t2i]&quot;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Text-to-Video (HunyuanVideo, CogVideoX, Wan2.2)</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[with_t2v]&quot;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Text-to-Speech (VibeVoice, Bark, MMS-TTS)</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[with_tts]&quot;</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Speech-to-Text (Whisper)</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[with_stt]&quot;</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co"># All features</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">&quot;hftool[all]&quot;</span></span></code></pre></div>
 <h3 id="system-requirements">System Requirements</h3>
 <ul>
 <li><p><strong>Python</strong>: &gt;= 3.10</p></li>
@@ -59,31 +80,51 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 support</p></li>
 <li><p><strong>ffmpeg</strong>: Required for video output and MP3 audio
 conversion</p>
-<div class="sourceCode" id="cb3"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ubuntu/Debian</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt install ffmpeg</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># macOS</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="ex">brew</span> install ffmpeg</span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Arch Linux</span></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> pacman <span class="at">-S</span> ffmpeg</span></code></pre></div></li>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ubuntu/Debian</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt install ffmpeg</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co"># macOS</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="ex">brew</span> install ffmpeg</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Arch Linux</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> pacman <span class="at">-S</span> ffmpeg</span></code></pre></div></li>
 </ul>
 <h3 id="development-install">Development Install</h3>
-<div class="sourceCode" id="cb4"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/zashboy-websites/hftool</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> hftool</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> <span class="st">&quot;.[dev]&quot;</span>  <span class="co"># Includes pytest</span></span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/zb-ss/hftool</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> hftool</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Install PyTorch first (see Quick Install above for your platform)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install torch torchvision torchaudio  <span class="co"># or with ROCm/CPU index</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Then install hftool in dev mode</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> <span class="st">&quot;.[dev]&quot;</span>  <span class="co"># Includes pytest</span></span></code></pre></div>
+<h3 id="pipx-install-isolated-environment">pipx Install (Isolated
+Environment)</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install hftool</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pipx</span> install hftool<span class="pp">[</span><span class="ss">all</span><span class="pp">]</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Then inject the correct PyTorch for your platform:</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co"># NVIDIA:</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="ex">pipx</span> runpip hftool install torch torchvision torchaudio</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="co"># AMD ROCm:</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="ex">pipx</span> runpip hftool install torch torchvision torchaudio <span class="at">--index-url</span> https://download.pytorch.org/whl/rocm6.2</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="co"># CPU only:</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="ex">pipx</span> runpip hftool install torch torchvision torchaudio <span class="at">--index-url</span> https://download.pytorch.org/whl/cpu</span></code></pre></div>
 <h2 id="quick-start">Quick Start</h2>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate an image (auto-opens when done!)</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat in space&quot;</span> <span class="at">-o</span> cat.png</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate speech</span></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-i</span> <span class="st">&quot;Hello world&quot;</span> <span class="at">-o</span> hello.wav</span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Transcribe audio</span></span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-i</span> recording.wav <span class="at">-o</span> transcript.txt</span></code></pre></div>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate an image (auto-opens when done!)</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat in space&quot;</span> <span class="at">-o</span> cat.png</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate speech</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-i</span> <span class="st">&quot;Hello world&quot;</span> <span class="at">-o</span> hello.wav</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Transcribe audio</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-i</span> recording.wav <span class="at">-o</span> transcript.txt</span></code></pre></div>
 <p><strong>Auto-open feature</strong>: By default, generated images,
 audio, and video files automatically open in your system’s default
 application when complete!</p>
@@ -103,56 +144,56 @@ Download this model now? [Y/n]:</code></pre>
 <hr />
 <h2 id="model-management">Model Management</h2>
 <h3 id="list-available-models">List Available Models</h3>
-<div class="sourceCode" id="cb7"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># List all models</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># List models for a specific task</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models <span class="at">-t</span> text-to-image</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models <span class="at">-t</span> t2i  <span class="co"># (using alias)</span></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Show only downloaded models</span></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models <span class="at">--downloaded</span></span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Output as JSON</span></span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models <span class="at">--json</span></span></code></pre></div>
-<h3 id="download-models">Download Models</h3>
-<div class="sourceCode" id="cb8"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Download default model for a task</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-t</span> text-to-image</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-t</span> t2i  <span class="co"># (using alias)</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Download specific model by short name</span></span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-t</span> t2i <span class="at">-m</span> sdxl</span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Download by HuggingFace repo_id</span></span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-m</span> openai/whisper-large-v3</span>
-<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Download all default models for all tasks</span></span>
-<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">--all</span></span>
-<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Re-download (force)</span></span>
-<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-t</span> t2i <span class="at">-f</span></span></code></pre></div>
-<h3 id="check-status">Check Status</h3>
-<div class="sourceCode" id="cb9"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show downloaded models and disk usage</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> status</span></code></pre></div>
-<h3 id="clean-up">Clean Up</h3>
 <div class="sourceCode" id="cb10"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Interactive selection (default) - shows numbered list to choose from</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean</span>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># List all models</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Delete specific model by name</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean <span class="at">-m</span> whisper-large-v3</span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Delete multiple models at once</span></span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean <span class="at">-m</span> whisper-large-v3 <span class="at">-m</span> z-image-turbo</span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Delete all downloaded models</span></span>
-<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean <span class="at">--all</span></span>
-<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Skip confirmation prompts</span></span>
-<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean <span class="at">--all</span> <span class="at">-y</span></span></code></pre></div>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># List models for a specific task</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models <span class="at">-t</span> text-to-image</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models <span class="at">-t</span> t2i  <span class="co"># (using alias)</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Show only downloaded models</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models <span class="at">--downloaded</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Output as JSON</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> models <span class="at">--json</span></span></code></pre></div>
+<h3 id="download-models">Download Models</h3>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Download default model for a task</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-t</span> text-to-image</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-t</span> t2i  <span class="co"># (using alias)</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Download specific model by short name</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-t</span> t2i <span class="at">-m</span> sdxl</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Download by HuggingFace repo_id</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-m</span> openai/whisper-large-v3</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Download all default models for all tasks</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">--all</span></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Re-download (force)</span></span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> download <span class="at">-t</span> t2i <span class="at">-f</span></span></code></pre></div>
+<h3 id="check-status">Check Status</h3>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show downloaded models and disk usage</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> status</span></code></pre></div>
+<h3 id="clean-up">Clean Up</h3>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Interactive selection (default) - shows numbered list to choose from</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Delete specific model by name</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean <span class="at">-m</span> whisper-large-v3</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Delete multiple models at once</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean <span class="at">-m</span> whisper-large-v3 <span class="at">-m</span> z-image-turbo</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Delete all downloaded models</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean <span class="at">--all</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Skip confirmation prompts</span></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> clean <span class="at">--all</span> <span class="at">-y</span></span></code></pre></div>
 <p><strong>Interactive selection example:</strong></p>
 <pre><code>Downloaded models:
 ------------------------------------------------------------
@@ -169,40 +210,49 @@ Selection []: 1,2</code></pre>
 <h3 id="custom-storage-location">Custom Storage Location</h3>
 <p>By default, models are stored in <code>~/.hftool/models/</code>. You
 can customize this:</p>
-<div class="sourceCode" id="cb12"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Set custom location</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">HFTOOL_MODELS_DIR</span><span class="op">=</span>/path/to/models</span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or use one-time</span></span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="va">HFTOOL_MODELS_DIR</span><span class="op">=</span>/mnt/storage <span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat&quot;</span> <span class="at">-o</span> cat.png</span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Set custom location via environment variable</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">HFTOOL_MODELS_DIR</span><span class="op">=</span>/path/to/models</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or use one-time</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="va">HFTOOL_MODELS_DIR</span><span class="op">=</span>/mnt/storage <span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat&quot;</span> <span class="at">-o</span> cat.png</span></code></pre></div>
+<p><strong>Using a <code>.env</code> file</strong> (recommended):</p>
+<p>Create a <code>.env</code> file in your project directory or
+<code>~/.hftool/.env</code>:</p>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># .env</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="va">HFTOOL_MODELS_DIR</span><span class="op">=</span>/data/models</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="va">HFTOOL_AUTO_DOWNLOAD</span><span class="op">=</span>1</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="va">HFTOOL_AUTO_OPEN</span><span class="op">=</span>0</span></code></pre></div>
+<p>hftool automatically loads <code>.env</code> files on startup.</p>
 <h3 id="auto-download-mode">Auto-Download Mode</h3>
 <p>To skip interactive prompts and auto-download models:</p>
-<div class="sourceCode" id="cb13"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">HFTOOL_AUTO_DOWNLOAD</span><span class="op">=</span>1</span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">HFTOOL_AUTO_DOWNLOAD</span><span class="op">=</span>1</span></code></pre></div>
 <h3 id="auto-open-output-files">Auto-Open Output Files</h3>
 <p>By default, generated images, audio, and video files automatically
 open in your system’s default application when complete. Control this
 with:</p>
-<div class="sourceCode" id="cb14"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Always open (even text files)</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat&quot;</span> <span class="at">-o</span> cat.png <span class="at">--open</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Never open</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat&quot;</span> <span class="at">-o</span> cat.png <span class="at">--no-open</span></span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Or set via environment variable</span></span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">HFTOOL_AUTO_OPEN</span><span class="op">=</span>1    <span class="co"># Always open</span></span>
-<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">HFTOOL_AUTO_OPEN</span><span class="op">=</span>0    <span class="co"># Never open</span></span></code></pre></div>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Always open (even text files)</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat&quot;</span> <span class="at">-o</span> cat.png <span class="at">--open</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Never open</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat&quot;</span> <span class="at">-o</span> cat.png <span class="at">--no-open</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Or set via environment variable</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">HFTOOL_AUTO_OPEN</span><span class="op">=</span>1    <span class="co"># Always open</span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">HFTOOL_AUTO_OPEN</span><span class="op">=</span>0    <span class="co"># Never open</span></span></code></pre></div>
 <p><strong>Default behavior</strong>: Auto-opens image, audio, and video
 files. Text output is printed to console.</p>
 <hr />
 <h2 id="usage">Usage</h2>
 <h3 id="basic-syntax">Basic Syntax</h3>
-<div class="sourceCode" id="cb15"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> <span class="op">&lt;</span>task<span class="op">&gt;</span> -i <span class="op">&lt;</span>input<span class="op">&gt;</span> [-m <span class="op">&lt;</span>model<span class="op">&gt;</span>] [-o <span class="op">&lt;</span>output<span class="op">&gt;</span>] [-- extra_args]</span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> <span class="op">&lt;</span>task<span class="op">&gt;</span> -i <span class="op">&lt;</span>input<span class="op">&gt;</span> [-m <span class="op">&lt;</span>model<span class="op">&gt;</span>] [-o <span class="op">&lt;</span>output<span class="op">&gt;</span>] [-- extra_args]</span></code></pre></div>
 <h3 id="list-available-tasks">List Available Tasks</h3>
-<div class="sourceCode" id="cb16"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">--list-tasks</span></span></code></pre></div>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">--list-tasks</span></span></code></pre></div>
 <h3 id="task-aliases">Task Aliases</h3>
 <table>
 <thead>
@@ -239,40 +289,40 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href=
 <h3 id="text-to-image">Text-to-Image</h3>
 <p>Generate images with Z-Image-Turbo (state-of-the-art open-source
 model):</p>
-<div class="sourceCode" id="cb17"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic usage (uses default model)</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat wearing a space helmet&quot;</span> <span class="at">-o</span> cat_space.png</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With specific model</span></span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-m</span> Tongyi-MAI/Z-Image-Turbo <span class="dt">\</span></span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;A photorealistic sunset over mountains&quot;</span> <span class="dt">\</span></span>
-<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> sunset.png</span>
-<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a><span class="co"># With custom parameters (Z-Image-Turbo uses 9 steps, guidance_scale=0)</span></span>
-<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-m</span> Tongyi-MAI/Z-Image-Turbo <span class="dt">\</span></span>
-<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;A renaissance painting of a robot&quot;</span> <span class="dt">\</span></span>
-<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> robot.png <span class="dt">\</span></span>
-<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--num_inference_steps</span> 9 <span class="at">--guidance_scale</span> 0.0 <span class="at">--height</span> 1024 <span class="at">--width</span> 1024</span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic usage (uses default model)</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat wearing a space helmet&quot;</span> <span class="at">-o</span> cat_space.png</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With specific model</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-m</span> Tongyi-MAI/Z-Image-Turbo <span class="dt">\</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;A photorealistic sunset over mountains&quot;</span> <span class="dt">\</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> sunset.png</span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a><span class="co"># With custom parameters (Z-Image-Turbo uses 9 steps, guidance_scale=0)</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-m</span> Tongyi-MAI/Z-Image-Turbo <span class="dt">\</span></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;A renaissance painting of a robot&quot;</span> <span class="dt">\</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> robot.png <span class="dt">\</span></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--num_inference_steps</span> 9 <span class="at">--guidance_scale</span> 0.0 <span class="at">--height</span> 1024 <span class="at">--width</span> 1024</span></code></pre></div>
 <p><strong>Other supported models:</strong> -
 <code>stabilityai/stable-diffusion-xl-base-1.0</code> -
 <code>black-forest-labs/FLUX.1-schnell</code></p>
 <hr />
 <h3 id="text-to-video">Text-to-Video</h3>
 <p>Generate videos with HunyuanVideo-1.5:</p>
-<div class="sourceCode" id="cb18"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic usage (480p, ~2.5 second video)</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2v <span class="at">-i</span> <span class="st">&quot;A person walking on a beach at sunset&quot;</span> <span class="at">-o</span> beach.mp4</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With specific model and parameters</span></span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2v <span class="at">-m</span> hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v <span class="dt">\</span></span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;A timelapse of clouds moving over a city&quot;</span> <span class="dt">\</span></span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> clouds.mp4 <span class="dt">\</span></span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--num_frames</span> 61 <span class="at">--num_inference_steps</span> 30</span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Image-to-Video (animate an image)</span></span>
-<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> i2v <span class="at">-m</span> hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v <span class="dt">\</span></span>
-<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&#39;{&quot;image&quot;: &quot;photo.jpg&quot;, &quot;prompt&quot;: &quot;The person waves hello&quot;}&#39;</span> <span class="dt">\</span></span>
-<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> animated.mp4</span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic usage (480p, ~2.5 second video)</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2v <span class="at">-i</span> <span class="st">&quot;A person walking on a beach at sunset&quot;</span> <span class="at">-o</span> beach.mp4</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With specific model and parameters</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2v <span class="at">-m</span> hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v <span class="dt">\</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;A timelapse of clouds moving over a city&quot;</span> <span class="dt">\</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> clouds.mp4 <span class="dt">\</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--num_frames</span> 61 <span class="at">--num_inference_steps</span> 30</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Image-to-Video (animate an image)</span></span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> i2v <span class="at">-m</span> hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v <span class="dt">\</span></span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&#39;{&quot;image&quot;: &quot;photo.jpg&quot;, &quot;prompt&quot;: &quot;The person waves hello&quot;}&#39;</span> <span class="dt">\</span></span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> animated.mp4</span></code></pre></div>
 <p><strong>Other supported models:</strong> -
 <code>THUDM/CogVideoX-5b</code> -
 <code>Wan-AI/Wan2.1-T2V-1.3B</code></p>
@@ -281,49 +331,49 @@ encoding.</p>
 <hr />
 <h3 id="text-to-speech">Text-to-Speech</h3>
 <p>Generate speech with VibeVoice:</p>
-<div class="sourceCode" id="cb19"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic usage</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-i</span> <span class="st">&quot;Hello, this is a test of the text to speech system.&quot;</span> <span class="at">-o</span> hello.wav</span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With specific model</span></span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-m</span> microsoft/VibeVoice-Realtime-0.5B <span class="dt">\</span></span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;Welcome to hftool, your command-line AI assistant.&quot;</span> <span class="dt">\</span></span>
-<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> welcome.wav</span>
-<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Output as MP3 (requires ffmpeg)</span></span>
-<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-i</span> <span class="st">&quot;This will be saved as MP3.&quot;</span> <span class="at">-o</span> output.mp3</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic usage</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-i</span> <span class="st">&quot;Hello, this is a test of the text to speech system.&quot;</span> <span class="at">-o</span> hello.wav</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With specific model</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-m</span> microsoft/VibeVoice-Realtime-0.5B <span class="dt">\</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;Welcome to hftool, your command-line AI assistant.&quot;</span> <span class="dt">\</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> welcome.wav</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Output as MP3 (requires ffmpeg)</span></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-i</span> <span class="st">&quot;This will be saved as MP3.&quot;</span> <span class="at">-o</span> output.mp3</span></code></pre></div>
 <p><strong>Other supported models:</strong> -
 <code>suno/bark-small</code> (multi-language, sound effects) -
 <code>facebook/mms-tts-eng</code> (lightweight)</p>
 <h4 id="glm-tts-setup-advanced">GLM-TTS Setup (Advanced)</h4>
 <p>GLM-TTS requires manual installation:</p>
-<div class="sourceCode" id="cb20"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Clone the repository</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/zai-org/GLM-TTS.git</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> GLM-TTS <span class="kw">&amp;&amp;</span> <span class="ex">pip</span> install <span class="at">-r</span> requirements.txt</span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Set environment variable</span></span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">GLMTTS_PATH</span><span class="op">=</span>/path/to/GLM-TTS</span>
-<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Run</span></span>
-<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-m</span> zai-org/GLM-TTS <span class="at">-i</span> <span class="st">&quot;你好世界&quot;</span> <span class="at">-o</span> hello_chinese.wav</span></code></pre></div>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Clone the repository</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/zai-org/GLM-TTS.git</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> GLM-TTS <span class="kw">&amp;&amp;</span> <span class="ex">pip</span> install <span class="at">-r</span> requirements.txt</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Set environment variable</span></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">GLMTTS_PATH</span><span class="op">=</span>/path/to/GLM-TTS</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Run</span></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> tts <span class="at">-m</span> zai-org/GLM-TTS <span class="at">-i</span> <span class="st">&quot;你好世界&quot;</span> <span class="at">-o</span> hello_chinese.wav</span></code></pre></div>
 <hr />
 <h3 id="speech-to-text-asr">Speech-to-Text (ASR)</h3>
 <p>Transcribe audio with Whisper:</p>
-<div class="sourceCode" id="cb21"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic transcription</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-i</span> recording.wav <span class="at">-o</span> transcript.txt</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With specific model</span></span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-m</span> openai/whisper-large-v3 <span class="at">-i</span> podcast.mp3 <span class="at">-o</span> transcript.txt</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a><span class="co"># With timestamps (outputs JSON)</span></span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-i</span> interview.wav <span class="at">-o</span> transcript.json <span class="dt">\</span></span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--return_timestamps</span> true</span>
-<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate SRT subtitles</span></span>
-<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-i</span> video_audio.wav <span class="at">-o</span> subtitles.srt <span class="dt">\</span></span>
-<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--return_timestamps</span> true <span class="at">--format</span> srt</span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic transcription</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-i</span> recording.wav <span class="at">-o</span> transcript.txt</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With specific model</span></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-m</span> openai/whisper-large-v3 <span class="at">-i</span> podcast.mp3 <span class="at">-o</span> transcript.txt</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a><span class="co"># With timestamps (outputs JSON)</span></span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-i</span> interview.wav <span class="at">-o</span> transcript.json <span class="dt">\</span></span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--return_timestamps</span> true</span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate SRT subtitles</span></span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> asr <span class="at">-i</span> video_audio.wav <span class="at">-o</span> subtitles.srt <span class="dt">\</span></span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--return_timestamps</span> true <span class="at">--format</span> srt</span></code></pre></div>
 <p><strong>Supported models:</strong> -
 <code>openai/whisper-large-v3</code> (best quality) -
 <code>openai/whisper-medium</code> - <code>openai/whisper-small</code>
@@ -331,30 +381,30 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href=
 <hr />
 <h3 id="text-generation-llms">Text Generation (LLMs)</h3>
 <p>Run language models:</p>
-<div class="sourceCode" id="cb22"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic generation</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> llm <span class="at">-m</span> meta-llama/Llama-3.2-1B-Instruct <span class="dt">\</span></span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;Explain quantum computing in simple terms:&quot;</span> <span class="dt">\</span></span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> response.txt <span class="dt">\</span></span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--max_new_tokens</span> 200</span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Basic generation</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> llm <span class="at">-m</span> meta-llama/Llama-3.2-1B-Instruct <span class="dt">\</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;Explain quantum computing in simple terms:&quot;</span> <span class="dt">\</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">-o</span> response.txt <span class="dt">\</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--max_new_tokens</span> 200</span></code></pre></div>
 <hr />
 <h3 id="other-tasks">Other Tasks</h3>
-<div class="sourceCode" id="cb23"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Image Classification</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> image-classification <span class="at">-m</span> google/vit-base-patch16-224 <span class="dt">\</span></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> photo.jpg <span class="at">-o</span> result.json</span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Object Detection</span></span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> object-detection <span class="at">-m</span> facebook/detr-resnet-50 <span class="dt">\</span></span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> street.jpg <span class="at">-o</span> detections.json</span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Summarization</span></span>
-<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> summarization <span class="at">-m</span> facebook/bart-large-cnn <span class="dt">\</span></span>
-<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> article.txt <span class="at">-o</span> summary.txt</span>
-<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Translation</span></span>
-<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> translation <span class="at">-m</span> Helsinki-NLP/opus-mt-en-de <span class="dt">\</span></span>
-<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;Hello, how are you?&quot;</span> <span class="at">-o</span> translation.txt</span></code></pre></div>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Image Classification</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> image-classification <span class="at">-m</span> google/vit-base-patch16-224 <span class="dt">\</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> photo.jpg <span class="at">-o</span> result.json</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Object Detection</span></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> object-detection <span class="at">-m</span> facebook/detr-resnet-50 <span class="dt">\</span></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> street.jpg <span class="at">-o</span> detections.json</span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Summarization</span></span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> summarization <span class="at">-m</span> facebook/bart-large-cnn <span class="dt">\</span></span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> article.txt <span class="at">-o</span> summary.txt</span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Translation</span></span>
+<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> translation <span class="at">-m</span> Helsinki-NLP/opus-mt-en-de <span class="dt">\</span></span>
+<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a>       <span class="at">-i</span> <span class="st">&quot;Hello, how are you?&quot;</span> <span class="at">-o</span> translation.txt</span></code></pre></div>
 <hr />
 <h2 id="cli-reference">CLI Reference</h2>
 <h3 id="main-command">Main Command</h3>
@@ -373,6 +423,7 @@ Options:
   --help                  Show this message and exit
 
 Commands:
+  setup     Run interactive PyTorch setup wizard
   models    List available models for tasks
   download  Download models from HuggingFace Hub
   status    Show download status and disk usage
@@ -408,15 +459,26 @@ Commands:
 <td>Auto-open output files</td>
 <td><code>auto</code> (media files only)</td>
 </tr>
+<tr class="even">
+<td><code>HFTOOL_ROCM_PATH</code></td>
+<td>Path to ROCm libraries (e.g., Ollama’s bundled ROCm)</td>
+<td>(none)</td>
+</tr>
+<tr class="odd">
+<td><code>HSA_OVERRIDE_GFX_VERSION</code></td>
+<td>AMD GPU architecture override (e.g., <code>11.0.0</code> for RX
+7900)</td>
+<td>(none)</td>
+</tr>
 </tbody>
 </table>
 <h3 id="passing-model-specific-arguments">Passing Model-Specific
 Arguments</h3>
 <p>Use <code>--</code> to pass additional arguments to the underlying
 model:</p>
-<div class="sourceCode" id="cb25"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat&quot;</span> <span class="at">-o</span> cat.png <span class="dt">\</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--num_inference_steps</span> 20 <span class="at">--guidance_scale</span> 7.5 <span class="at">--seed</span> 42</span></code></pre></div>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;A cat&quot;</span> <span class="at">-o</span> cat.png <span class="dt">\</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">--</span> <span class="at">--num_inference_steps</span> 20 <span class="at">--guidance_scale</span> 7.5 <span class="at">--seed</span> 42</span></code></pre></div>
 <hr />
 <h2 id="hardware-recommendations">Hardware Recommendations</h2>
 <h3 id="amd-rocm-primary-target">AMD ROCm (Primary Target)</h3>
@@ -469,6 +531,36 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href=
 </tr>
 </tbody>
 </table>
+<h4 id="rocm-setup-without-system-wide-installation">ROCm Setup (Without
+System-Wide Installation)</h4>
+<p>If you have <a href="https://ollama.com">Ollama</a> installed, you
+can use its bundled ROCm libraries instead of installing ROCm
+system-wide (which can interfere with gaming GPU drivers).</p>
+<p><strong>Step 1:</strong> Install PyTorch ROCm in your hftool
+environment:</p>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If using pipx:</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pipx</span> runpip hftool uninstall torch torchvision torchaudio <span class="at">-y</span></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pipx</span> runpip hftool install torch torchvision torchaudio <span class="at">--index-url</span> https://download.pytorch.org/whl/rocm6.2</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="co"># If using pip:</span></span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> uninstall torch torchvision torchaudio <span class="at">-y</span></span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install torch torchvision torchaudio <span class="at">--index-url</span> https://download.pytorch.org/whl/rocm6.2</span></code></pre></div>
+<p><strong>Step 2:</strong> Add ROCm configuration to your
+<code>.env</code> file (<code>~/.hftool/.env</code> or project
+directory):</p>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Use Ollama&#39;s bundled ROCm libraries</span></span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="va">HFTOOL_ROCM_PATH</span><span class="op">=</span>/usr/local/lib/ollama/rocm</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Set your GPU architecture (required for AMD GPUs)</span></span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a><span class="co"># RDNA3: gfx1100 (RX 7900 XTX/XT), gfx1101 (RX 7800/7700), gfx1102 (RX 7600)</span></span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a><span class="co"># RDNA2: gfx1030 (RX 6900/6800), gfx1031 (RX 6700), gfx1032 (RX 6600)</span></span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a><span class="va">HSA_OVERRIDE_GFX_VERSION</span><span class="op">=</span>11.0.0</span></code></pre></div>
+<p><strong>Step 3:</strong> Verify GPU detection:</p>
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="ex">hftool</span> <span class="at">-t</span> t2i <span class="at">-i</span> <span class="st">&quot;test&quot;</span> <span class="at">-o</span> test.png <span class="at">-v</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Should show &quot;Using device: cuda&quot; or similar</span></span></code></pre></div>
 <h3 id="nvidia-cuda">NVIDIA CUDA</h3>
 <p>Works with CUDA 11.8+ and modern NVIDIA GPUs.</p>
 <h3 id="apple-silicon-mps">Apple Silicon (MPS)</h3>
@@ -501,17 +593,16 @@ for TTS</p>
     └── deps.py         # Dependency checking</code></pre>
 <hr />
 <h2 id="running-tests">Running Tests</h2>
-<div class="sourceCode" id="cb27"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> <span class="st">&quot;.[dev]&quot;</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pytest</span> tests/ <span class="at">-v</span></span></code></pre></div>
+<div class="sourceCode" id="cb34"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> <span class="st">&quot;.[dev]&quot;</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pytest</span> tests/ <span class="at">-v</span></span></code></pre></div>
 <hr />
 <h2 id="license">License</h2>
 <p>MIT License</p>
 <hr />
 <h2 id="links">Links</h2>
 <ul>
-<li><a href="https://github.com/zashboy-websites/hftool">GitHub
-Repository</a></li>
+<li><a href="https://github.com/zb-ss/hftool">GitHub Repository</a></li>
 <li><a href="https://huggingface.co">Hugging Face</a></li>
 </ul>
 <h3 id="model-references">Model References</h3>

@@ -85,7 +85,7 @@ pip install "hftool[all]"
 ### Development Install
 
 ```bash
-git clone https://github.com/zashboy-websites/hftool
+git clone https://github.com/zb-ss/hftool
 cd hftool
 
 # Install PyTorch first (see Quick Install above for your platform)
@@ -620,7 +620,7 @@ MIT License
 
 ## Links
 
-- [GitHub Repository](https://github.com/zashboy-websites/hftool)
+- [GitHub Repository](https://github.com/zb-ss/hftool)
 - [Hugging Face](https://huggingface.co)
 
 ### Model References
