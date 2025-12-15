@@ -234,7 +234,7 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             **kwargs: Additional inference arguments
                 - num_frames: Number of frames to generate
                 - num_inference_steps: Number of denoising steps
-                - guidance_scale: CFG scale
+                - guidance_scale: CFG scale (handled via guider for HunyuanVideo1.5)
                 - height: Video height
                 - width: Video width
                 - negative_prompt: Negative prompt
@@ -254,6 +254,16 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         # Get model-specific defaults and merge with kwargs
         defaults = self.get_default_kwargs()
         inference_kwargs = {**defaults, **kwargs}
+        
+        # Handle guidance_scale for pipelines that use guider system (HunyuanVideo1.5)
+        # These pipelines don't accept guidance_scale at runtime - it must be set on the guider
+        guidance_scale = inference_kwargs.pop("guidance_scale", None)
+        if guidance_scale is not None and hasattr(pipeline, "guider"):
+            # Update the guider's guidance_scale
+            try:
+                pipeline.guider = pipeline.guider.new(guidance_scale=guidance_scale)
+            except Exception:
+                pass  # If guider doesn't support this, ignore
         
         # Run inference
         result = pipeline(prompt=prompt, **inference_kwargs)
