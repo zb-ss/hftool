@@ -69,7 +69,7 @@ with_t2v = [
     "accelerate>=0.26.0",
 ]
 
-# Text-to-Speech (VibeVoice, Bark, MMS-TTS)
+# Text-to-Speech (Bark, MMS-TTS)
 # Requires system ffmpeg for MP3 conversion
 with_tts = [
     "transformers>=4.45.0",
@@ -129,8 +129,9 @@ all = [
 hftool = "hftool.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/zashboy-websites/hftool"
-Repository = "https://github.com/zashboy-websites/hftool"
+Homepage = "https://github.com/zb-ss/hftool"
+Repository = "https://github.com/zb-ss/hftool"
+Issues = "https://github.com/zb-ss/hftool/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

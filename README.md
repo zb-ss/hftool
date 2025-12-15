@@ -622,6 +622,7 @@ MIT License
 ## Links
 
 - [GitHub Repository](https://github.com/zb-ss/hftool)
+- [Contributing Guide](CONTRIBUTING.md)
 - [Hugging Face](https://huggingface.co)
 
 ### Model References
