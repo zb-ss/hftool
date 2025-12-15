@@ -122,34 +122,40 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         num_gpus = device_info.device_count if device == "cuda" else 0
         
         # Check multi-GPU settings
+        # NOTE: For video models, device_map="balanced" often causes OOM during VAE decode
+        # because the VAE needs to process many frames at once. CPU offload is more reliable.
+        # Use HFTOOL_MULTI_GPU=balanced to force device_map distribution anyway.
         multi_gpu_env = os.environ.get("HFTOOL_MULTI_GPU", "").lower()
-        force_multi_gpu = multi_gpu_env in ("1", "true", "yes", "balanced")
+        force_device_map = multi_gpu_env == "balanced"  # Only if explicitly requested
         disable_multi_gpu = multi_gpu_env in ("0", "false", "no")
-        use_multi_gpu = (num_gpus > 1 and not disable_multi_gpu) or force_multi_gpu
         
         # Check CPU offload settings
         cpu_offload_env = os.environ.get("HFTOOL_CPU_OFFLOAD", "").lower()
         disable_cpu_offload = cpu_offload_env in ("0", "false", "no")
+        use_sequential_offload = cpu_offload_env == "2"
         
         # Prepare load kwargs
         load_kwargs = {"torch_dtype": dtype, **kwargs}
         
-        # Configure device_map for multi-GPU
-        if use_multi_gpu and num_gpus > 1:
-            click.echo(f"Multi-GPU mode: Distributing model across {num_gpus} GPUs...")
+        # For video models, prefer CPU offload over device_map due to VAE memory requirements
+        # device_map="balanced" can be forced with HFTOOL_MULTI_GPU=balanced
+        if force_device_map and num_gpus > 1:
+            click.echo(f"Multi-GPU mode (forced): Distributing model across {num_gpus} GPUs...")
+            click.echo("Warning: Video VAE decode may OOM. Consider using CPU offload instead.")
             load_kwargs["device_map"] = "balanced"
             max_memory = {}
             for i in range(num_gpus):
                 try:
                     mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
-                    max_memory[i] = f"{int(mem_gb - 2)}GB"
+                    # Reserve more memory for VAE decode (~8GB)
+                    max_memory[i] = f"{int(mem_gb - 8)}GB"
                 except Exception:
                     pass
             if max_memory:
                 load_kwargs["max_memory"] = max_memory
                 click.echo(f"GPU memory allocation: {max_memory}")
         elif num_gpus > 1:
-            click.echo(f"Multi-GPU detected ({num_gpus} GPUs) but disabled, using single GPU")
+            click.echo(f"Multi-GPU detected ({num_gpus} GPUs), using CPU offload for video (more reliable)")
         
         # Load model-specific pipelines
         if "hunyuanvideo" in model_lower:
@@ -163,9 +169,17 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             from diffusers import DiffusionPipeline
             pipe = DiffusionPipeline.from_pretrained(model, **load_kwargs)
         
-        # Enable VAE optimizations
-        if hasattr(pipe, "vae") and hasattr(pipe.vae, "enable_tiling"):
-            pipe.vae.enable_tiling()
+        # Enable VAE optimizations for memory efficiency
+        # Tiling processes the image/video in smaller chunks
+        if hasattr(pipe, "vae"):
+            if hasattr(pipe.vae, "enable_tiling"):
+                pipe.vae.enable_tiling()
+                click.echo("VAE tiling enabled")
+            # Slicing processes batch elements one at a time
+            if hasattr(pipe.vae, "enable_slicing"):
+                pipe.vae.enable_slicing()
+                click.echo("VAE slicing enabled")
+        # Pipeline-level VAE slicing (for video frame-by-frame processing)
         if hasattr(pipe, "enable_vae_slicing"):
             pipe.enable_vae_slicing()
         
@@ -174,14 +188,27 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         
         if has_device_map:
             click.echo(f"Model distributed across devices: {pipe.hf_device_map}")
-        elif not disable_cpu_offload:
-            # Enable CPU offload for memory efficiency (video models are large)
-            if hasattr(pipe, "enable_model_cpu_offload"):
+        elif disable_cpu_offload:
+            # User explicitly disabled CPU offload
+            click.echo(f"Loading model fully on {device}...")
+            pipe.to(device)
+        elif use_sequential_offload:
+            # Sequential offload - most memory efficient, slower
+            if hasattr(pipe, "enable_sequential_cpu_offload"):
+                click.echo("Enabling sequential CPU offload (most memory-efficient)...")
+                pipe.enable_sequential_cpu_offload()
+            elif hasattr(pipe, "enable_model_cpu_offload"):
                 click.echo("Enabling model CPU offload...")
                 pipe.enable_model_cpu_offload()
+            else:
+                pipe.to(device)
         else:
-            click.echo(f"Loading model on {device}...")
-            pipe.to(device)
+            # Default: model CPU offload - best balance for video generation
+            if hasattr(pipe, "enable_model_cpu_offload"):
+                click.echo("Enabling model CPU offload (recommended for video)...")
+                pipe.enable_model_cpu_offload()
+            else:
+                pipe.to(device)
         
         return pipe
     
