@@ -6,7 +6,7 @@ A powerful CLI for running Hugging Face models: text-to-image, text-to-video, te
 
 - **Text-to-Image**: Z-Image-Turbo, Stable Diffusion XL, FLUX
 - **Text-to-Video**: HunyuanVideo-1.5, CogVideoX, Wan2.2
-- **Text-to-Speech**: VibeVoice, Bark, MMS-TTS, GLM-TTS
+- **Text-to-Speech**: Bark, MMS-TTS, GLM-TTS
 - **Speech-to-Text**: Whisper (with timestamps and SRT export)
 - **Plus**: Text generation, classification, translation, and more via transformers pipelines
 
@@ -56,7 +56,7 @@ pip install "hftool[with_t2i]"
 # Text-to-Video (HunyuanVideo, CogVideoX, Wan2.2)
 pip install "hftool[with_t2v]"
 
-# Text-to-Speech (VibeVoice, Bark, MMS-TTS)
+# Text-to-Speech (Bark, MMS-TTS)
 pip install "hftool[with_tts]"
 
 # Speech-to-Text (Whisper)
@@ -363,14 +363,14 @@ hftool -t i2v -m hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v \
 
 ### Text-to-Speech
 
-Generate speech with VibeVoice:
+Generate speech with Bark:
 
 ```bash
-# Basic usage
+# Basic usage (uses bark-small by default)
 hftool -t tts -i "Hello, this is a test of the text to speech system." -o hello.wav
 
-# With specific model
-hftool -t tts -m microsoft/VibeVoice-Realtime-0.5B \
+# With full Bark model (higher quality, larger)
+hftool -t tts -m suno/bark \
        -i "Welcome to hftool, your command-line AI assistant." \
        -o welcome.wav
 
@@ -378,9 +378,10 @@ hftool -t tts -m microsoft/VibeVoice-Realtime-0.5B \
 hftool -t tts -i "This will be saved as MP3." -o output.mp3
 ```
 
-**Other supported models:**
-- `suno/bark-small` (multi-language, sound effects)
-- `facebook/mms-tts-eng` (lightweight)
+**Supported models:**
+- `suno/bark-small` (default, 1.5 GB, fast)
+- `suno/bark` (5 GB, full quality, multi-language, sound effects)
+- `facebook/mms-tts-eng` (0.3 GB, lightweight)
 
 #### GLM-TTS Setup (Advanced)
 
@@ -523,7 +524,7 @@ hftool is optimized for AMD GPUs with ROCm 6.x:
 | Text-to-Image | Z-Image-Turbo | ~10-12 GB | Comfortable on RX 7900 XTX |
 | Text-to-Video | HunyuanVideo 480p | ~20-24 GB | Use CPU offload |
 | Text-to-Video | HunyuanVideo 720p | ~30-40 GB | Requires multi-GPU |
-| Text-to-Speech | VibeVoice | ~2-4 GB | Easy |
+| Text-to-Speech | Bark | ~2-4 GB | Easy |
 | Speech-to-Text | Whisper-large-v3 | ~4-6 GB | Easy |
 
 #### ROCm Setup (Without System-Wide Installation)
@@ -627,5 +628,5 @@ MIT License
 
 - [Z-Image](https://github.com/Tongyi-MAI/Z-Image) - State-of-the-art text-to-image
 - [HunyuanVideo-1.5](https://huggingface.co/tencent/HunyuanVideo-1.5) - High-quality video generation
-- [VibeVoice](https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B) - Real-time TTS
+- [Bark](https://huggingface.co/suno/bark) - High-quality TTS with sound effects
 - [Whisper](https://huggingface.co/openai/whisper-large-v3) - Speech recognition

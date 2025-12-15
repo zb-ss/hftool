@@ -1,6 +1,6 @@
 """Text-to-speech task handler.
 
-Supports VibeVoice, Bark, MMS-TTS, and GLM-TTS (via external wrapper).
+Supports Bark, MMS-TTS, and GLM-TTS (via external wrapper).
 """
 
 import os
@@ -14,25 +14,17 @@ class TextToSpeechTask(TextInputMixin, BaseTask):
     """Handler for text-to-speech synthesis.
     
     Supported models:
-    - VibeVoice (microsoft/VibeVoice-Realtime-0.5B)
-    - Bark (suno/bark, suno/bark-small)
-    - MMS-TTS (facebook/mms-tts-*)
-    - SpeechT5 (microsoft/speecht5_tts)
+    - Bark (suno/bark, suno/bark-small) - default, high quality
+    - MMS-TTS (facebook/mms-tts-*) - lightweight, multilingual
     - GLM-TTS (zai-org/GLM-TTS) - requires external setup
     """
     
     # Model-specific default configurations
     MODEL_CONFIGS: Dict[str, Dict[str, Any]] = {
-        "VibeVoice": {
-            "sample_rate": 24000,
-        },
         "bark": {
             "sample_rate": 24000,
         },
         "mms-tts": {
-            "sample_rate": 16000,
-        },
-        "speecht5": {
             "sample_rate": 16000,
         },
     }
@@ -81,10 +73,6 @@ class TextToSpeechTask(TextInputMixin, BaseTask):
         if "glm-tts" in model_lower:
             return self._load_glmtts(model)
         
-        # Handle VibeVoice (requires vibevoice package)
-        if "vibevoice" in model_lower:
-            return self._load_vibevoice(model, device, **kwargs)
-        
         # Try transformers pipeline for standard models
         try:
             from transformers import pipeline
@@ -128,48 +116,6 @@ class TextToSpeechTask(TextInputMixin, BaseTask):
             "device": device,
         }
     
-    def _load_vibevoice(self, model: str, device: str, **kwargs) -> Dict[str, Any]:
-        """Load VibeVoice model.
-        
-        VibeVoice requires the vibevoice package: pip install vibevoice
-        Or install from source: git clone https://github.com/microsoft/VibeVoice.git && pip install -e .
-        """
-        try:
-            from vibevoice import VibeVoice
-        except ImportError:
-            raise RuntimeError(
-                "VibeVoice requires the vibevoice package.\n"
-                "Install with: pip install vibevoice\n"
-                "Or from source:\n"
-                "  git clone https://github.com/microsoft/VibeVoice.git\n"
-                "  cd VibeVoice && pip install -e .\n"
-                "Note: flash-attn is also required: pip install flash-attn --no-build-isolation"
-            )
-        
-        import torch
-        
-        if self.dtype:
-            dtype_map = {
-                "bfloat16": torch.bfloat16,
-                "float16": torch.float16,
-                "float32": torch.float32,
-            }
-            dtype = dtype_map.get(self.dtype, torch.bfloat16)
-        else:
-            dtype = torch.bfloat16
-        
-        # Load VibeVoice model
-        vibe_model = VibeVoice.from_pretrained(model, torch_dtype=dtype)
-        
-        if device != "cpu":
-            vibe_model = vibe_model.to(device)
-        
-        return {
-            "type": "vibevoice",
-            "model": vibe_model,
-            "device": device,
-        }
-    
     def _load_glmtts(self, model: str) -> Dict[str, Any]:
         """Load GLM-TTS (requires external setup).
         
@@ -209,10 +155,6 @@ class TextToSpeechTask(TextInputMixin, BaseTask):
         if isinstance(pipeline, dict) and pipeline.get("type") == "glmtts":
             return self._run_glmtts(pipeline, text, **kwargs)
         
-        # Handle VibeVoice
-        if isinstance(pipeline, dict) and pipeline.get("type") == "vibevoice":
-            return self._run_vibevoice(pipeline, text, **kwargs)
-        
         # Handle component-based loading
         if isinstance(pipeline, dict) and pipeline.get("type") == "components":
             return self._run_components(pipeline, text, **kwargs)
@@ -249,42 +191,6 @@ class TextToSpeechTask(TextInputMixin, BaseTask):
             audio = output.cpu().numpy()
         else:
             audio = output
-        
-        return {"audio": audio, "sampling_rate": self._sample_rate}
-    
-    def _run_vibevoice(self, pipeline: Dict[str, Any], text: str, **kwargs) -> Dict[str, Any]:
-        """Run VibeVoice inference.
-        
-        VibeVoice expects text in a specific format:
-        - Single speaker: Just the text
-        - Multi-speaker: "Speaker 1: text\\nSpeaker 2: text"
-        
-        Args:
-            pipeline: Dict with 'model' and 'device'
-            text: Text to synthesize
-            **kwargs: Additional arguments
-                - speaker_names: List of speaker names (default: ["Alice"])
-        """
-        import torch
-        
-        model = pipeline["model"]
-        
-        # Get speaker names from kwargs or use default
-        speaker_names = kwargs.pop("speaker_names", ["Alice"])
-        if isinstance(speaker_names, str):
-            speaker_names = [speaker_names]
-        
-        with torch.no_grad():
-            # VibeVoice generate method
-            audio = model.generate(
-                text=text,
-                speaker_names=speaker_names,
-                **kwargs
-            )
-        
-        # Convert to numpy if needed
-        if hasattr(audio, "cpu"):
-            audio = audio.cpu().numpy()
         
         return {"audio": audio, "sampling_rate": self._sample_rate}
     

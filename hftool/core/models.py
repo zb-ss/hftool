@@ -43,6 +43,10 @@ class ModelInfo:
     # Files to exclude from download (to reduce size)
     ignore_patterns: List[str] = field(default_factory=list)
     
+    # Additional pip packages required for this model
+    # Will be installed when model is downloaded/used
+    pip_dependencies: List[str] = field(default_factory=list)
+    
     # Additional metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
     
@@ -178,42 +182,37 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
     # TEXT-TO-SPEECH MODELS
     # =========================================================================
     "text-to-speech": {
-        "vibevoice": ModelInfo(
-            repo_id="microsoft/VibeVoice-Realtime-0.5B",
-            name="VibeVoice Realtime",
-            model_type=ModelType.TRANSFORMERS,
-            size_gb=1.0,
-            is_default=True,
-            description="Microsoft's realtime TTS model",
-        ),
         "bark-small": ModelInfo(
             repo_id="suno/bark-small",
             name="Bark Small",
             model_type=ModelType.TRANSFORMERS,
             size_gb=1.5,
-            description="Suno Bark TTS (small)",
+            is_default=True,
+            description="Suno Bark TTS (small, fast)",
         ),
         "bark": ModelInfo(
             repo_id="suno/bark",
             name="Bark",
             model_type=ModelType.TRANSFORMERS,
             size_gb=5.0,
-            description="Suno Bark TTS (full)",
+            description="Suno Bark TTS (full quality)",
         ),
         "mms-tts-eng": ModelInfo(
             repo_id="facebook/mms-tts-eng",
             name="MMS-TTS English",
             model_type=ModelType.TRANSFORMERS,
             size_gb=0.3,
-            description="Facebook's multilingual TTS (English)",
+            description="Facebook's multilingual TTS (English, lightweight)",
         ),
-        "speecht5": ModelInfo(
-            repo_id="microsoft/speecht5_tts",
-            name="SpeechT5 TTS",
-            model_type=ModelType.TRANSFORMERS,
-            size_gb=0.5,
-            description="Microsoft's SpeechT5 text-to-speech",
-        ),
+        # VibeVoice disabled - streaming API not compatible with current inference code
+        # "vibevoice": ModelInfo(
+        #     repo_id="microsoft/VibeVoice-Realtime-0.5B",
+        #     name="VibeVoice Realtime",
+        #     model_type=ModelType.CUSTOM,
+        #     size_gb=1.0,
+        #     description="Microsoft's realtime TTS model",
+        #     pip_dependencies=["vibevoice"],
+        # ),
     },
     
     # =========================================================================

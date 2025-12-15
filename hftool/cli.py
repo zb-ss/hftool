@@ -667,6 +667,7 @@ def download_command(
                     repo_id=info.repo_id,
                     size_gb=info.size_gb,
                     force=force,
+                    pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
                 )
                 click.echo("")
             except Exception as e:
@@ -702,6 +703,7 @@ def download_command(
             repo_id=info.repo_id,
             size_gb=info.size_gb,
             force=force,
+            pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
         )
         return
     
@@ -719,6 +721,7 @@ def download_command(
             repo_id=info.repo_id,
             size_gb=info.size_gb,
             force=force,
+            pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
         )
         return
     
@@ -1059,12 +1062,16 @@ def _run_task_command(
         task_config = get_task_config(resolved_task)
         
         # Determine which model to use
+        model_info = None
+        pip_dependencies = None
+        
         if model is None:
             # Use default model
             model_info = get_default_model_info(resolved_task)
             model_repo_id = model_info.repo_id
             model_size = model_info.size_gb
             model_name = model_info.name
+            pip_dependencies = model_info.pip_dependencies
         else:
             # Check if model is a local path
             if os.path.exists(model):
@@ -1078,6 +1085,7 @@ def _run_task_command(
                     model_repo_id = model_info.repo_id
                     model_size = model_info.size_gb
                     model_name = model_info.name
+                    pip_dependencies = model_info.pip_dependencies
                 except ValueError:
                     # Not in registry - assume it's a HuggingFace repo_id
                     model_repo_id = model
@@ -1086,6 +1094,8 @@ def _run_task_command(
         
         if verbose:
             click.echo(f"Using model: {model_repo_id}")
+            if pip_dependencies:
+                click.echo(f"Model dependencies: {', '.join(pip_dependencies)}")
         
         # Ensure model is available (prompts to download if needed)
         if not os.path.exists(model_repo_id):
@@ -1094,6 +1104,7 @@ def _run_task_command(
                 size_gb=model_size,
                 task_name=resolved_task,
                 model_name=model_name,
+                pip_dependencies=pip_dependencies,
             )
             # Use the local path for loading
             model_to_load = str(model_path)

@@ -167,12 +167,74 @@ def download_model(
     return Path(downloaded_path)
 
 
+def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True) -> bool:
+    """Install pip dependencies for a model.
+    
+    Args:
+        dependencies: List of pip package names to install
+        use_pipx: If True, try to inject into pipx venv first
+    
+    Returns:
+        True if installation succeeded
+    """
+    import subprocess
+    import shutil
+    
+    if not dependencies:
+        return True
+    
+    click.echo(f"Installing dependencies: {', '.join(dependencies)}")
+    
+    # Try pipx inject first (if hftool was installed via pipx)
+    if use_pipx and shutil.which("pipx"):
+        try:
+            # Check if hftool is installed via pipx
+            result = subprocess.run(
+                ["pipx", "list", "--short"],
+                capture_output=True,
+                text=True,
+            )
+            if "hftool" in result.stdout:
+                # Use pipx runpip to install into hftool's venv
+                for dep in dependencies:
+                    click.echo(f"  Installing {dep} via pipx...")
+                    install_cmd = ["pipx", "runpip", "hftool", "install", dep]
+                    # flash-attn needs special handling
+                    if dep == "flash-attn":
+                        install_cmd.extend(["--no-build-isolation"])
+                    
+                    proc = subprocess.run(install_cmd, capture_output=True, text=True)
+                    if proc.returncode != 0:
+                        click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
+                    else:
+                        click.echo(f"    Installed {dep}")
+                return True
+        except Exception as e:
+            click.echo(f"  pipx injection failed: {e}, falling back to pip", err=True)
+    
+    # Fall back to regular pip
+    try:
+        import pip
+        for dep in dependencies:
+            click.echo(f"  Installing {dep} via pip...")
+            install_args = ["install", dep]
+            if dep == "flash-attn":
+                install_args.append("--no-build-isolation")
+            pip.main(install_args)
+        return True
+    except Exception as e:
+        click.echo(f"  pip installation failed: {e}", err=True)
+        click.echo(f"  Please install manually: pip install {' '.join(dependencies)}")
+        return False
+
+
 def download_model_with_progress(
     repo_id: str,
     size_gb: float,
     revision: Optional[str] = None,
     ignore_patterns: Optional[List[str]] = None,
     force: bool = False,
+    pip_dependencies: Optional[List[str]] = None,
 ) -> Path:
     """Download a model with progress display.
     
@@ -182,10 +244,15 @@ def download_model_with_progress(
         revision: Specific revision/commit to download
         ignore_patterns: File patterns to exclude
         force: Re-download even if already exists
+        pip_dependencies: Additional pip packages to install
     
     Returns:
         Path to downloaded model
     """
+    # Install pip dependencies first (before download)
+    if pip_dependencies:
+        install_pip_dependencies(pip_dependencies)
+    
     # Check if already downloaded
     if not force and is_model_downloaded(repo_id):
         click.echo(f"Model already downloaded: {repo_id}")
@@ -253,6 +320,7 @@ def prompt_download(
     size_gb: float,
     task_name: str,
     model_name: str,
+    pip_dependencies: Optional[List[str]] = None,
 ) -> Optional[Path]:
     """Prompt user to download a model interactively.
     
@@ -261,6 +329,7 @@ def prompt_download(
         size_gb: Approximate size in GB
         task_name: Task name for display
         model_name: Model name for display
+        pip_dependencies: Additional pip packages to install
     
     Returns:
         Path to downloaded model, or None if user cancelled
@@ -275,6 +344,8 @@ def prompt_download(
     click.echo(f"  Repo:     {repo_id}")
     click.echo(f"  Size:     ~{size_gb:.1f} GB")
     click.echo(f"  Location: {get_model_path(repo_id)}")
+    if pip_dependencies:
+        click.echo(f"  Requires: {', '.join(pip_dependencies)}")
     click.echo("")
     
     try:
@@ -282,6 +353,7 @@ def prompt_download(
             return download_model_with_progress(
                 repo_id=repo_id,
                 size_gb=size_gb,
+                pip_dependencies=pip_dependencies,
             )
         else:
             click.echo("")
@@ -301,6 +373,7 @@ def ensure_model_available(
     task_name: str,
     model_name: str,
     auto_download: bool = False,
+    pip_dependencies: Optional[List[str]] = None,
 ) -> Path:
     """Ensure a model is available, prompting to download if needed.
     
@@ -310,6 +383,7 @@ def ensure_model_available(
         task_name: Task name for display
         model_name: Model name for display
         auto_download: If True, download without prompting
+        pip_dependencies: Additional pip packages to install
     
     Returns:
         Path to model
@@ -319,6 +393,9 @@ def ensure_model_available(
     """
     # Check if already downloaded
     if is_model_downloaded(repo_id):
+        # Still need to install pip dependencies even if model is downloaded
+        if pip_dependencies:
+            install_pip_dependencies(pip_dependencies)
         return get_model_path(repo_id)
     
     # Check environment variable for auto-download behavior
@@ -332,6 +409,7 @@ def ensure_model_available(
         return download_model_with_progress(
             repo_id=repo_id,
             size_gb=size_gb,
+            pip_dependencies=pip_dependencies,
         )
     
     # Interactive prompt
@@ -340,6 +418,7 @@ def ensure_model_available(
         size_gb=size_gb,
         task_name=task_name,
         model_name=model_name,
+        pip_dependencies=pip_dependencies,
     )
     
     if result is None:
