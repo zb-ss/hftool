@@ -104,25 +104,61 @@ class TextToImageTask(TextInputMixin, BaseTask):
         self._model_name = model
         
         # Try to load with appropriate pipeline
-        try:
-            # First try ZImagePipeline for Z-Image models
-            if "z-image" in model.lower() or "zimage" in model.lower():
+        model_lower = model.lower()
+        is_zimage = "z-image" in model_lower or "zimage" in model_lower
+        is_flux = "flux" in model_lower
+        
+        pipe = None
+        
+        # Try ZImagePipeline for Z-Image models
+        if is_zimage:
+            try:
                 from diffusers import ZImagePipeline
                 pipe = ZImagePipeline.from_pretrained(
                     model,
                     torch_dtype=dtype,
                     **kwargs
                 )
-            else:
-                # Generic DiffusionPipeline for auto-detection
-                from diffusers import DiffusionPipeline
-                pipe = DiffusionPipeline.from_pretrained(
+            except ImportError:
+                import click
+                click.echo(
+                    "Warning: ZImagePipeline not available. "
+                    "Upgrade diffusers: pip install --upgrade diffusers>=0.33.0",
+                    err=True
+                )
+            except Exception as e:
+                import click
+                click.echo(f"Warning: Failed to load ZImagePipeline: {e}", err=True)
+        
+        # Try FluxPipeline for FLUX models
+        if pipe is None and is_flux:
+            try:
+                from diffusers import FluxPipeline
+                pipe = FluxPipeline.from_pretrained(
                     model,
                     torch_dtype=dtype,
                     **kwargs
                 )
-        except Exception as e:
-            # Fallback to AutoPipelineForText2Image
+            except ImportError:
+                pass
+            except Exception:
+                pass
+        
+        # Try generic DiffusionPipeline with auto-detection
+        if pipe is None:
+            try:
+                from diffusers import DiffusionPipeline
+                pipe = DiffusionPipeline.from_pretrained(
+                    model,
+                    torch_dtype=dtype,
+                    trust_remote_code=True,
+                    **kwargs
+                )
+            except Exception:
+                pass
+        
+        # Final fallback to AutoPipelineForText2Image
+        if pipe is None:
             from diffusers import AutoPipelineForText2Image
             pipe = AutoPipelineForText2Image.from_pretrained(
                 model,

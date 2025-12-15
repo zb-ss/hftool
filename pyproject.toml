@@ -31,8 +31,14 @@ classifiers = [
 
 dependencies = [
     "transformers>=4.45.0",
-    "torch>=2.0.0",
+    # NOTE: torch is NOT included here - users must install the correct version for their platform:
+    #   NVIDIA: pip install torch torchvision torchaudio
+    #   AMD ROCm: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+    #   CPU only: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
     "click>=8.0.0",
+    "huggingface_hub>=0.20.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -46,16 +52,19 @@ with_audio = ["soundfile>=0.12.0"]
 with_http = ["requests>=2.20.0"]
 
 # Text-to-Image generation (Z-Image, SDXL, FLUX)
+# Note: Z-Image models require diffusers>=0.33.0 for ZImagePipeline
 with_t2i = [
-    "diffusers>=0.32.0",
+    "diffusers>=0.33.0",
     "Pillow>=9.0.0",
     "accelerate>=0.26.0",
+    "protobuf>=3.20.0",
+    "sentencepiece>=0.1.99",
 ]
 
 # Text-to-Video generation (HunyuanVideo, CogVideoX, Wan2.2)
 # Requires system ffmpeg for video encoding
 with_t2v = [
-    "diffusers>=0.32.0",
+    "diffusers>=0.33.0",
     "Pillow>=9.0.0",
     "accelerate>=0.26.0",
 ]
@@ -103,9 +112,12 @@ all = [
     "soundfile>=0.12.0",
     # HTTP
     "requests>=2.20.0",
-    # Diffusers (T2I, T2V)
-    "diffusers>=0.32.0",
+    # Diffusers (T2I, T2V) - 0.33.0+ for ZImagePipeline
+    "diffusers>=0.33.0",
     "accelerate>=0.26.0",
+    # Tokenizers (protobuf for T5, sentencepiece for various)
+    "protobuf>=3.20.0",
+    "sentencepiece>=0.1.99",
     # Audio advanced
     "librosa>=0.9.0",
     "scipy",

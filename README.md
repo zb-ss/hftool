@@ -20,6 +20,33 @@ A powerful CLI for running Hugging Face models: text-to-image, text-to-video, te
 pip install hftool
 ```
 
+On first run, hftool will detect if PyTorch is missing or misconfigured and offer to install it for you:
+
+```
+============================================================
+  hftool - First Time Setup
+============================================================
+
+Detected hardware:
+  [✓] AMD GPU detected: Radeon RX 7900 XTX
+
+Select PyTorch version to install:
+
+  [1] NVIDIA GPU (CUDA)
+  [2] AMD GPU (ROCm 6.2) (recommended)
+  [3] Apple Silicon (MPS)
+  [4] CPU only
+  [5] Skip (install manually later)
+
+Your choice [2]:
+```
+
+You can also run the setup wizard manually at any time:
+
+```bash
+hftool setup
+```
+
 ### Install with Specific Features
 
 ```bash
@@ -60,8 +87,197 @@ pip install "hftool[all]"
 ```bash
 git clone https://github.com/zashboy-websites/hftool
 cd hftool
+
+# Install PyTorch first (see Quick Install above for your platform)
+pip install torch torchvision torchaudio  # or with ROCm/CPU index
+
+# Then install hftool in dev mode
 pip install -e ".[dev]"  # Includes pytest
 ```
+
+### pipx Install (Isolated Environment)
+
+```bash
+# Install hftool
+pipx install hftool[all]
+
+# Then inject the correct PyTorch for your platform:
+# NVIDIA:
+pipx runpip hftool install torch torchvision torchaudio
+
+# AMD ROCm:
+pipx runpip hftool install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+
+# CPU only:
+pipx runpip hftool install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+```
+
+## Quick Start
+
+```bash
+# Generate an image (auto-opens when done!)
+hftool -t t2i -i "A cat in space" -o cat.png
+
+# Generate speech
+hftool -t tts -i "Hello world" -o hello.wav
+
+# Transcribe audio
+hftool -t asr -i recording.wav -o transcript.txt
+```
+
+**Auto-open feature**: By default, generated images, audio, and video files automatically open in your system's default application when complete!
+
+When you run a task for the first time, hftool will prompt you to download the required model:
+
+```
+============================================================
+Model not found: Z-Image Turbo
+============================================================
+
+  Task:     text-to-image
+  Model:    Z-Image Turbo
+  Repo:     Tongyi-MAI/Z-Image-Turbo
+  Size:     ~6.0 GB
+  Location: /home/user/.hftool/models/Tongyi-MAI--Z-Image-Turbo
+
+Download this model now? [Y/n]:
+```
+
+---
+
+## Model Management
+
+### List Available Models
+
+```bash
+# List all models
+hftool models
+
+# List models for a specific task
+hftool models -t text-to-image
+hftool models -t t2i  # (using alias)
+
+# Show only downloaded models
+hftool models --downloaded
+
+# Output as JSON
+hftool models --json
+```
+
+### Download Models
+
+```bash
+# Download default model for a task
+hftool download -t text-to-image
+hftool download -t t2i  # (using alias)
+
+# Download specific model by short name
+hftool download -t t2i -m sdxl
+
+# Download by HuggingFace repo_id
+hftool download -m openai/whisper-large-v3
+
+# Download all default models for all tasks
+hftool download --all
+
+# Re-download (force)
+hftool download -t t2i -f
+```
+
+### Check Status
+
+```bash
+# Show downloaded models and disk usage
+hftool status
+```
+
+### Clean Up
+
+```bash
+# Interactive selection (default) - shows numbered list to choose from
+hftool clean
+
+# Delete specific model by name
+hftool clean -m whisper-large-v3
+
+# Delete multiple models at once
+hftool clean -m whisper-large-v3 -m z-image-turbo
+
+# Delete all downloaded models
+hftool clean --all
+
+# Skip confirmation prompts
+hftool clean --all -y
+```
+
+**Interactive selection example:**
+```
+Downloaded models:
+------------------------------------------------------------
+  [ 1] Whisper Large v3 (automatic-speech-recognition)
+       openai/whisper-large-v3 - 3.1 GB
+  [ 2] Z-Image Turbo (text-to-image)
+       Tongyi-MAI/Z-Image-Turbo - 6.0 GB
+------------------------------------------------------------
+
+Enter model numbers to delete (comma-separated, ranges with -, or 'all'):
+Examples: 1,3,5  or  1-3  or  1,3-5,7  or  all
+
+Selection []: 1,2
+```
+
+### Custom Storage Location
+
+By default, models are stored in `~/.hftool/models/`. You can customize this:
+
+```bash
+# Set custom location via environment variable
+export HFTOOL_MODELS_DIR=/path/to/models
+
+# Or use one-time
+HFTOOL_MODELS_DIR=/mnt/storage hftool -t t2i -i "A cat" -o cat.png
+```
+
+**Using a `.env` file** (recommended):
+
+Create a `.env` file in your project directory or `~/.hftool/.env`:
+
+```bash
+# .env
+HFTOOL_MODELS_DIR=/data/models
+HFTOOL_AUTO_DOWNLOAD=1
+HFTOOL_AUTO_OPEN=0
+```
+
+hftool automatically loads `.env` files on startup.
+
+### Auto-Download Mode
+
+To skip interactive prompts and auto-download models:
+
+```bash
+export HFTOOL_AUTO_DOWNLOAD=1
+```
+
+### Auto-Open Output Files
+
+By default, generated images, audio, and video files automatically open in your system's default application when complete. Control this with:
+
+```bash
+# Always open (even text files)
+hftool -t t2i -i "A cat" -o cat.png --open
+
+# Never open
+hftool -t t2i -i "A cat" -o cat.png --no-open
+
+# Or set via environment variable
+export HFTOOL_AUTO_OPEN=1    # Always open
+export HFTOOL_AUTO_OPEN=0    # Never open
+```
+
+**Default behavior**: Auto-opens image, audio, and video files. Text output is printed to console.
+
+---
 
 ## Usage
 
@@ -249,20 +465,41 @@ hftool -t translation -m Helsinki-NLP/opus-mt-en-de \
 
 ## CLI Reference
 
+### Main Command
+
 ```
-Usage: hftool [OPTIONS]
+Usage: hftool [OPTIONS] COMMAND [ARGS]...
 
 Options:
-  -t, --task TEXT         Task to perform (required unless --list-tasks)
+  -t, --task TEXT         Task to perform
   -m, --model TEXT        Model name/path (uses task default if omitted)
-  -i, --input TEXT        Input data: text, file path, or URL (required)
+  -i, --input TEXT        Input data: text, file path, or URL
   -o, --output-file TEXT  Output file path (auto-generated if omitted)
   -d, --device TEXT       Device: auto, cuda, mps, cpu (default: auto)
   --dtype TEXT            Data type: bfloat16, float16, float32
+  --open / --no-open      Open output with default app (auto for media files)
   --list-tasks            List all available tasks and aliases
   -v, --verbose           Show detailed progress
   --help                  Show this message and exit
+
+Commands:
+  setup     Run interactive PyTorch setup wizard
+  models    List available models for tasks
+  download  Download models from HuggingFace Hub
+  status    Show download status and disk usage
+  clean     Delete downloaded models
+  run       Run a task (alternative to -t flag)
 ```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HFTOOL_MODELS_DIR` | Custom models storage directory | `~/.hftool/models/` |
+| `HFTOOL_AUTO_DOWNLOAD` | Auto-download models without prompting | `0` (disabled) |
+| `HFTOOL_AUTO_OPEN` | Auto-open output files | `auto` (media files only) |
+| `HFTOOL_ROCM_PATH` | Path to ROCm libraries (e.g., Ollama's bundled ROCm) | (none) |
+| `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture override (e.g., `11.0.0` for RX 7900) | (none) |
 
 ### Passing Model-Specific Arguments
 
@@ -289,6 +526,41 @@ hftool is optimized for AMD GPUs with ROCm 6.x:
 | Text-to-Speech | VibeVoice | ~2-4 GB | Easy |
 | Speech-to-Text | Whisper-large-v3 | ~4-6 GB | Easy |
 
+#### ROCm Setup (Without System-Wide Installation)
+
+If you have [Ollama](https://ollama.com) installed, you can use its bundled ROCm libraries instead of installing ROCm system-wide (which can interfere with gaming GPU drivers).
+
+**Step 1:** Install PyTorch ROCm in your hftool environment:
+
+```bash
+# If using pipx:
+pipx runpip hftool uninstall torch torchvision torchaudio -y
+pipx runpip hftool install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+
+# If using pip:
+pip uninstall torch torchvision torchaudio -y
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+```
+
+**Step 2:** Add ROCm configuration to your `.env` file (`~/.hftool/.env` or project directory):
+
+```bash
+# Use Ollama's bundled ROCm libraries
+HFTOOL_ROCM_PATH=/usr/local/lib/ollama/rocm
+
+# Set your GPU architecture (required for AMD GPUs)
+# RDNA3: gfx1100 (RX 7900 XTX/XT), gfx1101 (RX 7800/7700), gfx1102 (RX 7600)
+# RDNA2: gfx1030 (RX 6900/6800), gfx1031 (RX 6700), gfx1032 (RX 6600)
+HSA_OVERRIDE_GFX_VERSION=11.0.0
+```
+
+**Step 3:** Verify GPU detection:
+
+```bash
+hftool -t t2i -i "test" -o test.png -v
+# Should show "Using device: cuda" or similar
+```
+
 ### NVIDIA CUDA
 
 Works with CUDA 11.8+ and modern NVIDIA GPUs.
@@ -309,10 +581,12 @@ Works but slow. Use smaller models:
 
 ```
 hftool/
-├── cli.py              # CLI entry point
+├── cli.py              # CLI entry point with subcommands
 ├── core/
 │   ├── device.py       # ROCm/CUDA/MPS/CPU detection
-│   └── registry.py     # Task registry and configuration
+│   ├── registry.py     # Task registry and configuration
+│   ├── models.py       # Model registry with download metadata
+│   └── download.py     # Model download manager
 ├── tasks/
 │   ├── base.py         # Abstract base task class
 │   ├── text_to_image.py
