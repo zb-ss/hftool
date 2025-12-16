@@ -290,6 +290,7 @@ class TextToImageTask(TextInputMixin, BaseTask):
             PIL.Image object
         """
         import torch
+        import click
         
         # Handle seed -> generator conversion
         seed = kwargs.pop("seed", None)
@@ -301,8 +302,30 @@ class TextToImageTask(TextInputMixin, BaseTask):
         defaults = self.get_default_kwargs()
         inference_kwargs = {**defaults, **kwargs}
         
-        # Run inference
-        result = pipeline(prompt=prompt, **inference_kwargs)
+        # Run inference with OOM handling
+        try:
+            result = pipeline(prompt=prompt, **inference_kwargs)
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            if "out of memory" in error_msg or "hip out of memory" in error_msg:
+                height = inference_kwargs.get("height", 1024)
+                width = inference_kwargs.get("width", 1024)
+                click.echo("", err=True)
+                click.echo(click.style("Out of GPU memory!", fg="red"), err=True)
+                click.echo("", err=True)
+                click.echo("Try one of these solutions:", err=True)
+                click.echo(f"  1. Use a smaller resolution (current: {width}x{height}):", err=True)
+                click.echo(f"     hftool -t t2i -i \"...\" -o out.png -- --height 768 --width 768", err=True)
+                click.echo("", err=True)
+                click.echo("  2. Enable CPU offload (slower but uses less VRAM):", err=True)
+                click.echo("     HFTOOL_CPU_OFFLOAD=1 hftool -t t2i -i \"...\" -o out.png", err=True)
+                click.echo("", err=True)
+                click.echo("  3. Disable multi-GPU and use single GPU:", err=True)
+                click.echo("     HFTOOL_MULTI_GPU=0 hftool -t t2i -i \"...\" -o out.png", err=True)
+                click.echo("", err=True)
+                raise
+            else:
+                raise
         
         # Return the first image
         return result.images[0]
