@@ -1,6 +1,10 @@
 # hftool
 
-A powerful CLI for running Hugging Face models: text-to-image, text-to-video, text-to-speech, speech-to-text, and more.
+A CLI for running HuggingFace models, optimized for AMD ROCm.
+
+> **What this is:** A convenient wrapper for common AI tasks (image/video/speech generation, transcription). Not a replacement for transformers or diffusers, but a simpler interface when you just want to run a model without writing Python.
+>
+> **Who it's for:** AMD GPU owners frustrated with CUDA-first tooling, and anyone who wants a unified CLI for multiple AI modalities.
 
 ## Features
 
@@ -9,8 +13,10 @@ A powerful CLI for running Hugging Face models: text-to-image, text-to-video, te
 - **Text-to-Speech**: Bark, MMS-TTS, GLM-TTS
 - **Speech-to-Text**: Whisper (with timestamps and SRT export)
 - **Plus**: Text generation, classification, translation, and more via transformers pipelines
+- **Model Management**: Download, list, and clean up models with simple commands
+- **Auto-Setup**: Detects your hardware and helps install the right PyTorch version
 
-**Optimized for AMD ROCm** (also supports NVIDIA CUDA, Apple MPS, and CPU).
+Works on **AMD ROCm**, NVIDIA CUDA, Apple MPS, and CPU.
 
 ## Installation
 
