@@ -77,6 +77,21 @@ TASK_REGISTRY: Dict[str, TaskConfig] = {
     ),
     
     # ============================================
+    # IMAGE-TO-IMAGE (diffusers)
+    # ============================================
+    "image-to-image": TaskConfig(
+        handler="hftool.tasks.image_to_image",
+        library="diffusers",
+        input_type="image",
+        output_type="image",
+        required_deps=["diffusers", "PIL", "accelerate", "torch"],
+        default_models=[
+            "stabilityai/stable-diffusion-xl-refiner-1.0",
+        ],
+        description="Transform images with text guidance (style transfer, editing)",
+    ),
+    
+    # ============================================
     # IMAGE-TO-VIDEO (diffusers)
     # ============================================
     "image-to-video": TaskConfig(
@@ -254,6 +269,8 @@ TASK_REGISTRY: Dict[str, TaskConfig] = {
 # Task aliases for convenience
 TASK_ALIASES: Dict[str, str] = {
     "t2i": "text-to-image",
+    "i2i": "image-to-image",
+    "img2img": "image-to-image",
     "t2v": "text-to-video",
     "i2v": "image-to-video",
     "tts": "text-to-speech",

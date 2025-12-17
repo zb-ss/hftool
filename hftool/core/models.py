@@ -116,6 +116,29 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
     },
     
     # =========================================================================
+    # IMAGE-TO-IMAGE MODELS
+    # =========================================================================
+    "image-to-image": {
+        "sdxl-refiner": ModelInfo(
+            repo_id="stabilityai/stable-diffusion-xl-refiner-1.0",
+            name="SDXL Refiner",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=6.2,
+            is_default=True,
+            description="SDXL refiner for img2img enhancement and style transfer",
+            metadata={"num_inference_steps": 30, "strength": 0.3},
+        ),
+        "sdxl": ModelInfo(
+            repo_id="stabilityai/stable-diffusion-xl-base-1.0",
+            name="SDXL Base (img2img)",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=6.5,
+            description="SDXL base model for stronger style transfer",
+            metadata={"num_inference_steps": 30, "strength": 0.7},
+        ),
+    },
+    
+    # =========================================================================
     # TEXT-TO-VIDEO MODELS
     # =========================================================================
     "text-to-video": {

@@ -1404,6 +1404,9 @@ def _run_task(
     if task_name == "text-to-image":
         from hftool.tasks.text_to_image import create_task
         task_handler = create_task(device=device, dtype=dtype)
+    elif task_name == "image-to-image":
+        from hftool.tasks.image_to_image import create_task
+        task_handler = create_task(device=device, dtype=dtype)
     elif task_name in ("text-to-video", "image-to-video"):
         from hftool.tasks.text_to_video import create_task
         mode = task_config.config.get("mode", "t2v")
