@@ -9,6 +9,7 @@ A CLI for running HuggingFace models, optimized for AMD ROCm.
 ## Features
 
 - **Text-to-Image**: Z-Image-Turbo, Stable Diffusion XL, FLUX
+- **Image-to-Image**: SDXL Refiner for style transfer and image editing
 - **Text-to-Video**: HunyuanVideo-1.5, CogVideoX, Wan2.2
 - **Text-to-Speech**: Bark, MMS-TTS, GLM-TTS
 - **Speech-to-Text**: Whisper (with timestamps and SRT export)
@@ -304,7 +305,9 @@ hftool --list-tasks
 | Alias | Full Name |
 |-------|-----------|
 | `t2i` | text-to-image |
+| `i2i`, `img2img` | image-to-image |
 | `t2v` | text-to-video |
+| `i2v` | image-to-video |
 | `tts` | text-to-speech |
 | `asr`, `stt` | automatic-speech-recognition |
 | `llm` | text-generation |
@@ -336,6 +339,42 @@ hftool -t t2i -m Tongyi-MAI/Z-Image-Turbo \
 **Other supported models:**
 - `stabilityai/stable-diffusion-xl-base-1.0`
 - `black-forest-labs/FLUX.1-schnell`
+
+---
+
+### Image-to-Image
+
+Transform existing images with style transfer, editing, or enhancement:
+
+```bash
+# Basic style transfer (uses SDXL Refiner by default)
+hftool -t i2i \
+       -i '{"image": "photo.jpg", "prompt": "watercolor painting style"}' \
+       -o watercolor.png
+
+# More dramatic transformation (higher strength = more change)
+hftool -t i2i \
+       -i '{"image": "portrait.jpg", "prompt": "cyberpunk neon style, futuristic"}' \
+       -o cyberpunk.png \
+       -- --strength 0.7
+
+# Subtle enhancement (lower strength = more like original)
+hftool -t i2i \
+       -i '{"image": "landscape.jpg", "prompt": "professional photography, enhanced colors"}' \
+       -o enhanced.png \
+       -- --strength 0.3
+```
+
+**Supported models:**
+- `stabilityai/stable-diffusion-xl-refiner-1.0` (default) - Best for refinement and subtle changes
+- `stabilityai/stable-diffusion-xl-base-1.0` - Better for stronger style transfer
+
+**Input format:** JSON with `image` (path to source image) and `prompt` (style description)
+
+**Strength parameter:** Controls how much the image changes (0.0-1.0):
+- `0.2-0.3` - Subtle refinement, keeps most of original
+- `0.5` - Balanced transformation
+- `0.7-0.9` - Dramatic style change
 
 ---
 
@@ -597,6 +636,7 @@ hftool/
 ├── tasks/
 │   ├── base.py         # Abstract base task class
 │   ├── text_to_image.py
+│   ├── image_to_image.py
 │   ├── text_to_video.py
 │   ├── text_to_speech.py
 │   ├── speech_to_text.py
