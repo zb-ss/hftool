@@ -360,10 +360,22 @@ def _ensure_pytorch_ready() -> bool:
 # CLI GROUP
 # =============================================================================
 
-@click.group(invoke_without_command=True, context_settings={
-    "allow_interspersed_args": False,
-    "ignore_unknown_options": True,
-})
+def _extract_extra_args():
+    """Extract arguments after -- from sys.argv before Click processes them."""
+    try:
+        idx = sys.argv.index("--")
+        extra = sys.argv[idx + 1:]
+        # Remove -- and everything after from sys.argv so Click doesn't see them
+        sys.argv = sys.argv[:idx]
+        return extra
+    except ValueError:
+        return []
+
+# Extract extra args BEFORE Click parses (this modifies sys.argv)
+_EXTRA_ARGS_CACHE = _extract_extra_args()
+
+
+@click.group(invoke_without_command=True)
 @click.option("--task", "-t", default=None, help="Task to perform (e.g., text-to-image, tts, asr)")
 @click.option("--model", "-m", default=None, help="Model name or path (uses task default if not specified)")
 @click.option("--input", "-i", "input_data", default=None, help="Input data (text, file path, or URL)")
@@ -373,7 +385,6 @@ def _ensure_pytorch_ready() -> bool:
 @click.option("--open/--no-open", default=None, help="Open output file with default application (auto-detected by default)")
 @click.option("--list-tasks", is_flag=True, help="List all available tasks")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
-@click.argument("extra_args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -386,7 +397,6 @@ def main(
     open: Optional[bool],
     list_tasks: bool,
     verbose: bool,
-    extra_args: tuple,
 ):
     """hftool - Run Hugging Face models from the command line.
     
@@ -421,7 +431,7 @@ def main(
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["open"] = open
-    ctx.obj["extra_args"] = extra_args
+    ctx.obj["extra_args"] = tuple(_EXTRA_ARGS_CACHE)
     
     # Handle --list-tasks
     if list_tasks:
