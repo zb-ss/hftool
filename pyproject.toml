@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "hftool"
-version = "0.2.1"
+dynamic = ["version"]
 description = "A CLI for Hugging Face models: text-to-image, text-to-video, TTS, ASR, and more."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -143,3 +143,8 @@ addopts = "-v --tb=short"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["hftool*"]
+
+[tool.setuptools_scm]
+# Version from git tags (e.g., v0.2.1 -> 0.2.1)
+version_scheme = "guess-next-dev"
+local_scheme = "no-local-version"
