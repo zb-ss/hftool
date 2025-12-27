@@ -1394,9 +1394,29 @@ def _run_task(
     
     # Determine output path if not specified
     if output_file is None:
+        import json as json_module
         output_type = output_type_map.get(task_config.output_type, OutputType.TEXT)
+        
+        # Extract actual file path from JSON input if needed (for i2i tasks)
+        actual_input_path = None
+        if task_config.input_type != "text":
+            # Try to parse JSON input to extract image path
+            if input_data.strip().startswith("{"):
+                try:
+                    data = json_module.loads(input_data)
+                    img_path = data.get("image")
+                    # Handle both single path and list of paths
+                    if isinstance(img_path, list):
+                        actual_input_path = img_path[0] if img_path else None
+                    else:
+                        actual_input_path = img_path
+                except (json_module.JSONDecodeError, TypeError):
+                    pass
+            else:
+                actual_input_path = input_data
+        
         output_file = get_output_path(
-            input_path=input_data if task_config.input_type != "text" else None,
+            input_path=actual_input_path,
             output_type=output_type,
         )
     
