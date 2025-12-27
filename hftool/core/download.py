@@ -167,12 +167,38 @@ def download_model(
     return Path(downloaded_path)
 
 
-def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True) -> bool:
+def check_dependency_satisfied(dep: str) -> bool:
+    """Check if a dependency requirement is already satisfied.
+    
+    Args:
+        dep: Dependency spec like "diffusers>=0.36.0"
+    
+    Returns:
+        True if requirement is satisfied
+    """
+    try:
+        from packaging.requirements import Requirement
+        from packaging.version import Version
+        import importlib.metadata
+        
+        req = Requirement(dep)
+        try:
+            installed_version = Version(importlib.metadata.version(req.name))
+            return installed_version in req.specifier
+        except importlib.metadata.PackageNotFoundError:
+            return False
+    except ImportError:
+        # packaging not available, assume not satisfied to be safe
+        return False
+
+
+def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, force: bool = False) -> bool:
     """Install or upgrade pip dependencies for a model.
     
     Args:
         dependencies: List of pip package specs to install (e.g., "diffusers>=0.36.0")
         use_pipx: If True, try to inject into pipx venv first
+        force: If True, install even if already satisfied
     
     Returns:
         True if installation succeeded
@@ -182,6 +208,13 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True) -> 
     
     if not dependencies:
         return True
+    
+    # Filter out already satisfied dependencies
+    if not force:
+        unsatisfied = [dep for dep in dependencies if not check_dependency_satisfied(dep)]
+        if not unsatisfied:
+            return True
+        dependencies = unsatisfied
     
     click.echo(f"Installing/upgrading dependencies: {', '.join(dependencies)}")
     
