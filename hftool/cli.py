@@ -12,6 +12,7 @@ Supports:
 import os
 import sys
 import warnings
+import logging
 from typing import Optional
 
 # Load .env file FIRST (before ROCm setup) so env vars can be configured there
@@ -22,6 +23,25 @@ try:
     load_dotenv(os.path.expanduser("~/.hftool/.env"))  # ~/.hftool/.env
 except ImportError:
     pass  # python-dotenv not installed, skip
+
+# =============================================================================
+# Warning and Logging Configuration
+# =============================================================================
+# By default, suppress noisy warnings from dependencies (diffusers, transformers, torch)
+# Enable debug mode with HFTOOL_DEBUG=1 in .env or environment to see all warnings
+_debug_mode = os.environ.get("HFTOOL_DEBUG", "").lower() in ("1", "true", "yes")
+
+if not _debug_mode:
+    # Suppress common non-breaking warnings from dependencies
+    warnings.filterwarnings("ignore", message=".*expandable_segments not supported.*")
+    warnings.filterwarnings("ignore", message=".*hipBLASLt on an unsupported architecture.*")
+    warnings.filterwarnings("ignore", message=".*torch_dtype.*is deprecated.*")
+    warnings.filterwarnings("ignore", message=".*config attributes.*were passed to.*but are not expected.*")
+    warnings.filterwarnings("ignore", message=".*guidance_scale.*is passed.*but ignored.*")
+    warnings.filterwarnings("ignore", message=".*Some parameters are on the meta device.*")
+    # Suppress transformers/diffusers info logging
+    logging.getLogger("transformers").setLevel(logging.ERROR)
+    logging.getLogger("diffusers").setLevel(logging.ERROR)
 
 # =============================================================================
 # ROCm Setup (for AMD GPU users without system-wide ROCm)

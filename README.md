@@ -254,9 +254,22 @@ Create a `.env` file in your project directory or `~/.hftool/.env`:
 HFTOOL_MODELS_DIR=/data/models
 HFTOOL_AUTO_DOWNLOAD=1
 HFTOOL_AUTO_OPEN=0
+HFTOOL_DEBUG=0          # Set to 1 to show all warnings
 ```
 
 hftool automatically loads `.env` files on startup.
+
+### Debug Mode
+
+By default, hftool suppresses noisy warnings from dependencies (torch, diffusers, transformers). To see all warnings for debugging:
+
+```bash
+# Via environment variable
+HFTOOL_DEBUG=1 hftool -t i2i -i '{"image": "photo.jpg", "prompt": "..."}'
+
+# Or in .env file
+HFTOOL_DEBUG=1
+```
 
 ### Auto-Download Mode
 
