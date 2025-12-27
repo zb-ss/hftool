@@ -168,10 +168,10 @@ def download_model(
 
 
 def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True) -> bool:
-    """Install pip dependencies for a model.
+    """Install or upgrade pip dependencies for a model.
     
     Args:
-        dependencies: List of pip package names to install
+        dependencies: List of pip package specs to install (e.g., "diffusers>=0.36.0")
         use_pipx: If True, try to inject into pipx venv first
     
     Returns:
@@ -183,7 +183,7 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True) -> 
     if not dependencies:
         return True
     
-    click.echo(f"Installing dependencies: {', '.join(dependencies)}")
+    click.echo(f"Installing/upgrading dependencies: {', '.join(dependencies)}")
     
     # Try pipx inject first (if hftool was installed via pipx)
     if use_pipx and shutil.which("pipx"):
@@ -197,10 +197,10 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True) -> 
             if "hftool" in result.stdout:
                 # Use pipx runpip to install into hftool's venv
                 for dep in dependencies:
-                    click.echo(f"  Installing {dep} via pipx...")
-                    install_cmd = ["pipx", "runpip", "hftool", "install", dep]
+                    click.echo(f"  Upgrading {dep} via pipx...")
+                    install_cmd = ["pipx", "runpip", "hftool", "install", "--upgrade", dep]
                     # flash-attn needs special handling
-                    if dep == "flash-attn":
+                    if "flash-attn" in dep:
                         install_cmd.extend(["--no-build-isolation"])
                     
                     proc = subprocess.run(install_cmd, capture_output=True, text=True)
@@ -212,19 +212,23 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True) -> 
         except Exception as e:
             click.echo(f"  pipx injection failed: {e}, falling back to pip", err=True)
     
-    # Fall back to regular pip
+    # Fall back to regular pip via subprocess (more reliable than pip.main)
     try:
-        import pip
+        import sys
         for dep in dependencies:
-            click.echo(f"  Installing {dep} via pip...")
-            install_args = ["install", dep]
-            if dep == "flash-attn":
-                install_args.append("--no-build-isolation")
-            pip.main(install_args)
+            click.echo(f"  Upgrading {dep} via pip...")
+            install_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", dep]
+            if "flash-attn" in dep:
+                install_cmd.append("--no-build-isolation")
+            proc = subprocess.run(install_cmd, capture_output=True, text=True)
+            if proc.returncode != 0:
+                click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
+            else:
+                click.echo(f"    Installed {dep}")
         return True
     except Exception as e:
         click.echo(f"  pip installation failed: {e}", err=True)
-        click.echo(f"  Please install manually: pip install {' '.join(dependencies)}")
+        click.echo(f"  Please install manually: pip install --upgrade {' '.join(dependencies)}")
         return False
 
 

@@ -126,6 +126,7 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             size_gb=25.0,
             is_default=True,
             description="Qwen image editing with character consistency and multi-image support",
+            pip_dependencies=["diffusers>=0.36.0", "transformers>=4.45.0"],
             metadata={
                 "num_inference_steps": 40,
                 "guidance_scale": 1.0,
