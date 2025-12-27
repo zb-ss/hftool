@@ -9,7 +9,7 @@ A CLI for running HuggingFace models, optimized for AMD ROCm.
 ## Features
 
 - **Text-to-Image**: Z-Image-Turbo, Stable Diffusion XL, FLUX
-- **Image-to-Image**: SDXL Refiner for style transfer and image editing
+- **Image-to-Image**: Qwen Image Edit (advanced editing with multi-image support), SDXL Refiner
 - **Text-to-Video**: HunyuanVideo-1.5, CogVideoX, Wan2.2
 - **Text-to-Speech**: Bark, MMS-TTS, GLM-TTS
 - **Speech-to-Text**: Whisper (with timestamps and SRT export)
@@ -344,37 +344,83 @@ hftool -t t2i -m Tongyi-MAI/Z-Image-Turbo \
 
 ### Image-to-Image
 
-Transform existing images with style transfer, editing, or enhancement:
+Transform existing images with Qwen Image Edit (default) or SDXL:
 
 ```bash
-# Basic style transfer (uses SDXL Refiner by default)
+# Basic image editing with Qwen Image Edit (default)
 hftool -t i2i \
-       -i '{"image": "photo.jpg", "prompt": "watercolor painting style"}' \
+       -i '{"image": "photo.jpg", "prompt": "turn this into a watercolor painting"}' \
        -o watercolor.png
 
-# More dramatic transformation (higher strength = more change)
+# Multi-image editing - combine multiple images (Qwen feature)
 hftool -t i2i \
-       -i '{"image": "portrait.jpg", "prompt": "cyberpunk neon style, futuristic"}' \
-       -o cyberpunk.png \
-       -- --strength 0.7
+       -i '{"image": ["person1.jpg", "person2.jpg"], "prompt": "Both people standing together in a park"}' \
+       -o combined.png
 
-# Subtle enhancement (lower strength = more like original)
+# With custom parameters
 hftool -t i2i \
+       -i '{"image": "portrait.jpg", "prompt": "as a Renaissance painting"}' \
+       -o renaissance.png \
+       -- --seed 42 --true_cfg_scale 4.0 --num_inference_steps 50
+
+# Style transfer with SDXL Refiner (smaller model, faster)
+hftool -t i2i -m sdxl-refiner \
        -i '{"image": "landscape.jpg", "prompt": "professional photography, enhanced colors"}' \
        -o enhanced.png \
        -- --strength 0.3
 ```
 
 **Supported models:**
-- `stabilityai/stable-diffusion-xl-refiner-1.0` (default) - Best for refinement and subtle changes
-- `stabilityai/stable-diffusion-xl-base-1.0` - Better for stronger style transfer
+- `Qwen/Qwen-Image-Edit-2511` (default, 25 GB) - Advanced editing with character consistency, multi-image support
+- `stabilityai/stable-diffusion-xl-refiner-1.0` (6.2 GB) - Fast refinement and subtle changes
+- `stabilityai/stable-diffusion-xl-base-1.0` (6.5 GB) - Stronger style transfer
 
-**Input format:** JSON with `image` (path to source image) and `prompt` (style description)
+**Input format:** JSON with `image` (path or list of paths) and `prompt` (edit description)
 
-**Strength parameter:** Controls how much the image changes (0.0-1.0):
-- `0.2-0.3` - Subtle refinement, keeps most of original
-- `0.5` - Balanced transformation
-- `0.7-0.9` - Dramatic style change
+**Qwen Image Edit parameters** (pass after `--`):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--seed` | random | Random seed for reproducibility |
+| `--true_cfg_scale` | 4.0 | True CFG scale (higher = stronger prompt adherence) |
+| `--num_inference_steps` | 40 | Number of denoising steps |
+| `--guidance_scale` | 1.0 | Standard CFG guidance scale |
+| `--negative_prompt` | " " | What to avoid in generation |
+
+**SDXL Refiner/Base parameters**:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--seed` | random | Random seed for reproducibility |
+| `--strength` | 0.3-0.7 | How much to change the image (0.0-1.0) |
+| `--num_inference_steps` | 30 | Number of denoising steps |
+| `--guidance_scale` | 7.5 | CFG guidance scale |
+
+**Qwen Image Edit features:**
+- Character consistency: Preserves identity in imaginative edits
+- Multi-image input: Combine multiple images into one scene
+- Industrial design: Batch product design and material replacement
+- Geometric reasoning: Generate auxiliary construction lines
+
+**Memory requirements:** Qwen Image Edit requires ~25GB VRAM. For GPUs with less memory:
+
+```bash
+# Use multi-GPU (distributes across available GPUs)
+HFTOOL_MULTI_GPU=1 hftool -t i2i -i '{"image": "photo.jpg", "prompt": "..."}' -o out.png
+
+# Use CPU offload (slower but works on 16-24GB GPUs)
+HFTOOL_CPU_OFFLOAD=1 hftool -t i2i -i '{"image": "photo.jpg", "prompt": "..."}' -o out.png
+
+# Use sequential CPU offload (most memory efficient, slowest)
+HFTOOL_CPU_OFFLOAD=2 hftool -t i2i -i '{"image": "photo.jpg", "prompt": "..."}' -o out.png
+```
+
+**Note:** Qwen Image Edit requires diffusers >= 0.36.0. Upgrade with:
+```bash
+pip install --upgrade diffusers>=0.36.0
+# Or for pipx:
+pipx runpip hftool install --upgrade diffusers>=0.36.0
+```
 
 ---
 
@@ -567,6 +613,8 @@ hftool is optimized for AMD GPUs with ROCm 6.x:
 | Task | Model | VRAM Required | Notes |
 |------|-------|---------------|-------|
 | Text-to-Image | Z-Image-Turbo | ~10-12 GB | Comfortable on RX 7900 XTX |
+| Image-to-Image | Qwen Image Edit | ~20-24 GB | Use CPU offload on 24GB cards |
+| Image-to-Image | SDXL Refiner | ~8-10 GB | Fast, lower VRAM |
 | Text-to-Video | HunyuanVideo 480p | ~20-24 GB | Use CPU offload |
 | Text-to-Video | HunyuanVideo 720p | ~30-40 GB | Requires multi-GPU |
 | Text-to-Speech | Bark | ~2-4 GB | Easy |
@@ -674,6 +722,7 @@ MIT License
 ### Model References
 
 - [Z-Image](https://github.com/Tongyi-MAI/Z-Image) - State-of-the-art text-to-image
+- [Qwen Image Edit](https://huggingface.co/Qwen/Qwen-Image-Edit-2511) - Advanced image editing with character consistency
 - [HunyuanVideo-1.5](https://huggingface.co/tencent/HunyuanVideo-1.5) - High-quality video generation
 - [Bark](https://huggingface.co/suno/bark) - High-quality TTS with sound effects
 - [Whisper](https://huggingface.co/openai/whisper-large-v3) - Speech recognition

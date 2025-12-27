@@ -10,8 +10,9 @@
 
 ## Supported Tasks
 - **text-to-image** (t2i): Z-Image, SDXL, FLUX - requires `[with_t2i]`
+- **image-to-image** (i2i): Qwen Image Edit, SDXL Refiner - requires `[with_t2i]`
 - **text-to-video** (t2v): HunyuanVideo, CogVideoX, Wan2.2 - requires `[with_t2v]` + system ffmpeg
-- **text-to-speech** (tts): VibeVoice, Bark, MMS-TTS - requires `[with_tts]`
+- **text-to-speech** (tts): Bark, MMS-TTS - requires `[with_tts]`
 - **automatic-speech-recognition** (asr/stt): Whisper - requires `[with_stt]`
 
 ## Model Management

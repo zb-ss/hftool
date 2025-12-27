@@ -119,12 +119,25 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
     # IMAGE-TO-IMAGE MODELS
     # =========================================================================
     "image-to-image": {
+        "qwen-image-edit": ModelInfo(
+            repo_id="Qwen/Qwen-Image-Edit-2511",
+            name="Qwen Image Edit",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=25.0,
+            is_default=True,
+            description="Qwen image editing with character consistency and multi-image support",
+            metadata={
+                "num_inference_steps": 40,
+                "guidance_scale": 1.0,
+                "true_cfg_scale": 4.0,
+                "pipeline_class": "QwenImageEditPlusPipeline",
+            },
+        ),
         "sdxl-refiner": ModelInfo(
             repo_id="stabilityai/stable-diffusion-xl-refiner-1.0",
             name="SDXL Refiner",
             model_type=ModelType.DIFFUSERS,
             size_gb=6.2,
-            is_default=True,
             description="SDXL refiner for img2img enhancement and style transfer",
             metadata={"num_inference_steps": 30, "strength": 0.3},
         ),
