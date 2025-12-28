@@ -34,20 +34,23 @@ _debug_mode = os.environ.get("HFTOOL_DEBUG", "").lower() in ("1", "true", "yes")
 _log_file = os.environ.get("HFTOOL_LOG_FILE", "")
 
 # Setup file logging if configured
+_file_handler = None
 if _log_file:
     _log_file = os.path.expanduser(_log_file)
-    os.makedirs(os.path.dirname(_log_file), exist_ok=True)
+    os.makedirs(os.path.dirname(_log_file) or ".", exist_ok=True)
     
-    # Configure root logger to capture everything to file
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[
-            logging.FileHandler(_log_file, mode="a", encoding="utf-8"),
-        ]
-    )
+    # Create file handler for capturing everything
+    _file_handler = logging.FileHandler(_log_file, mode="a", encoding="utf-8")
+    _file_handler.setLevel(logging.DEBUG)
+    _file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    ))
     
-    # Also capture warnings to the log file
+    # Add to root logger
+    logging.getLogger().addHandler(_file_handler)
+    logging.getLogger().setLevel(logging.DEBUG)
+    
+    # Capture warnings to the log file
     logging.captureWarnings(True)
     
     # Log startup
@@ -58,16 +61,29 @@ if _log_file:
     _logger.debug(f"Working dir: {os.getcwd()}")
 
 if not _debug_mode:
-    # Suppress common non-breaking warnings from dependencies
+    # Suppress common non-breaking warnings from console (still logged to file if enabled)
     warnings.filterwarnings("ignore", message=".*expandable_segments not supported.*")
     warnings.filterwarnings("ignore", message=".*hipBLASLt on an unsupported architecture.*")
     warnings.filterwarnings("ignore", message=".*torch_dtype.*is deprecated.*")
     warnings.filterwarnings("ignore", message=".*config attributes.*were passed to.*but are not expected.*")
     warnings.filterwarnings("ignore", message=".*guidance_scale.*is passed.*but ignored.*")
     warnings.filterwarnings("ignore", message=".*Some parameters are on the meta device.*")
-    # Suppress transformers/diffusers info logging to console
-    logging.getLogger("transformers").setLevel(logging.ERROR)
-    logging.getLogger("diffusers").setLevel(logging.ERROR)
+    
+    # Suppress transformers/diffusers logging to console but allow file logging
+    for _lib_name in ("transformers", "diffusers"):
+        _lib_logger = logging.getLogger(_lib_name)
+        _lib_logger.setLevel(logging.DEBUG)  # Capture everything
+        # Remove any existing console handlers and add a NullHandler for console
+        _lib_logger.handlers = []
+        if _file_handler:
+            _lib_logger.addHandler(_file_handler)
+        # Add null handler to prevent "No handler found" warnings
+        _lib_logger.addHandler(logging.NullHandler())
+    
+    # Set environment variables to suppress library-specific console output
+    # These are checked by diffusers/transformers before printing warnings
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+    os.environ.setdefault("DIFFUSERS_VERBOSITY", "error")
 
 # =============================================================================
 # ROCm Setup (for AMD GPU users without system-wide ROCm)
