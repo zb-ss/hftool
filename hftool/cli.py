@@ -29,7 +29,33 @@ except ImportError:
 # =============================================================================
 # By default, suppress noisy warnings from dependencies (diffusers, transformers, torch)
 # Enable debug mode with HFTOOL_DEBUG=1 in .env or environment to see all warnings
+# Optionally log to file with HFTOOL_LOG_FILE=~/.hftool/hftool.log
 _debug_mode = os.environ.get("HFTOOL_DEBUG", "").lower() in ("1", "true", "yes")
+_log_file = os.environ.get("HFTOOL_LOG_FILE", "")
+
+# Setup file logging if configured
+if _log_file:
+    _log_file = os.path.expanduser(_log_file)
+    os.makedirs(os.path.dirname(_log_file), exist_ok=True)
+    
+    # Configure root logger to capture everything to file
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[
+            logging.FileHandler(_log_file, mode="a", encoding="utf-8"),
+        ]
+    )
+    
+    # Also capture warnings to the log file
+    logging.captureWarnings(True)
+    
+    # Log startup
+    _logger = logging.getLogger("hftool")
+    _logger.info(f"hftool started - logging to {_log_file}")
+    _logger.debug(f"Debug mode: {_debug_mode}")
+    _logger.debug(f"Python: {sys.version}")
+    _logger.debug(f"Working dir: {os.getcwd()}")
 
 if not _debug_mode:
     # Suppress common non-breaking warnings from dependencies
@@ -39,7 +65,7 @@ if not _debug_mode:
     warnings.filterwarnings("ignore", message=".*config attributes.*were passed to.*but are not expected.*")
     warnings.filterwarnings("ignore", message=".*guidance_scale.*is passed.*but ignored.*")
     warnings.filterwarnings("ignore", message=".*Some parameters are on the meta device.*")
-    # Suppress transformers/diffusers info logging
+    # Suppress transformers/diffusers info logging to console
     logging.getLogger("transformers").setLevel(logging.ERROR)
     logging.getLogger("diffusers").setLevel(logging.ERROR)
 

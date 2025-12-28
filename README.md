@@ -259,7 +259,7 @@ HFTOOL_DEBUG=0          # Set to 1 to show all warnings
 
 hftool automatically loads `.env` files on startup.
 
-### Debug Mode
+### Debug Mode and Logging
 
 By default, hftool suppresses noisy warnings from dependencies (torch, diffusers, transformers). To see all warnings for debugging:
 
@@ -270,6 +270,18 @@ HFTOOL_DEBUG=1 hftool -t i2i -i '{"image": "photo.jpg", "prompt": "..."}'
 # Or in .env file
 HFTOOL_DEBUG=1
 ```
+
+**File Logging**: Save all warnings and debug info to a log file:
+
+```bash
+# Via environment variable
+HFTOOL_LOG_FILE=~/.hftool/hftool.log hftool -t i2i ...
+
+# Or in .env file (recommended)
+HFTOOL_LOG_FILE=~/.hftool/hftool.log
+```
+
+The log file captures all warnings, errors, and debug info even when `HFTOOL_DEBUG=0`. Useful for troubleshooting issues without cluttering the terminal.
 
 ### Auto-Download Mode
 
