@@ -10,7 +10,7 @@ Handles downloading models from HuggingFace Hub with:
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, Dict
 
 import click
 
@@ -104,11 +104,38 @@ def get_download_status(repo_id: str) -> str:
     return "not downloaded"
 
 
+def get_partial_downloads() -> List[Dict[str, str]]:
+    """Get list of partially downloaded models.
+    
+    Returns:
+        List of dicts with repo_id and path for partial downloads
+    """
+    models_dir = get_models_dir()
+    
+    if not models_dir.exists():
+        return []
+    
+    partial = []
+    for path in models_dir.iterdir():
+        if path.is_dir():
+            repo_id = path.name.replace("--", "/")
+            status = get_download_status(repo_id)
+            
+            if status == "partial":
+                partial.append({
+                    "repo_id": repo_id,
+                    "path": str(path),
+                })
+    
+    return partial
+
+
 def download_model(
     repo_id: str,
     revision: Optional[str] = None,
     ignore_patterns: Optional[List[str]] = None,
     force: bool = False,
+    resume: bool = True,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> Path:
     """Download a model from HuggingFace Hub.
@@ -118,6 +145,7 @@ def download_model(
         revision: Specific revision/commit to download
         ignore_patterns: File patterns to exclude from download
         force: Re-download even if already exists
+        resume: Resume partial downloads (default: True)
         progress_callback: Optional callback for progress updates (current, total)
     
     Returns:
@@ -157,11 +185,13 @@ def download_model(
     patterns.extend(default_ignores)
     
     # Download with huggingface_hub
+    # resume_download is enabled by default in huggingface_hub
     downloaded_path = snapshot_download(
         repo_id=repo_id,
         revision=revision,
         local_dir=str(model_path),
         ignore_patterns=patterns if patterns else None,
+        resume_download=resume,  # Enable resume capability
     )
     
     return Path(downloaded_path)
@@ -271,6 +301,7 @@ def download_model_with_progress(
     revision: Optional[str] = None,
     ignore_patterns: Optional[List[str]] = None,
     force: bool = False,
+    resume: bool = True,
     pip_dependencies: Optional[List[str]] = None,
 ) -> Path:
     """Download a model with progress display.
@@ -281,6 +312,7 @@ def download_model_with_progress(
         revision: Specific revision/commit to download
         ignore_patterns: File patterns to exclude
         force: Re-download even if already exists
+        resume: Resume partial downloads (default: True)
         pip_dependencies: Additional pip packages to install
     
     Returns:
@@ -297,7 +329,13 @@ def download_model_with_progress(
     
     model_path = get_model_path(repo_id)
     
-    click.echo(f"Downloading: {repo_id}")
+    # Check if resuming partial download
+    status = get_download_status(repo_id)
+    if status == "partial" and resume:
+        click.echo(f"Resuming download: {repo_id}")
+    else:
+        click.echo(f"Downloading: {repo_id}")
+    
     click.echo(f"Size: ~{size_gb:.1f} GB")
     click.echo(f"Location: {model_path}")
     click.echo("")
@@ -325,6 +363,7 @@ def download_model_with_progress(
                     revision=revision,
                     ignore_patterns=ignore_patterns,
                     force=force,
+                    resume=resume,
                 )
                 
                 progress.update(task, completed=True)
@@ -334,12 +373,17 @@ def download_model_with_progress(
             
         except ImportError:
             # Fall back to simple progress
-            click.echo("Downloading (this may take a while)...")
+            if status == "partial" and resume:
+                click.echo("Resuming download (this may take a while)...")
+            else:
+                click.echo("Downloading (this may take a while)...")
+            
             path = download_model(
                 repo_id=repo_id,
                 revision=revision,
                 ignore_patterns=ignore_patterns,
                 force=force,
+                resume=resume,
             )
             click.echo(f"Download complete: {path}")
             return path

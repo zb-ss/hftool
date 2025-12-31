@@ -896,6 +896,7 @@ def models_command(
 @click.option("--model", "-m", default=None, help="Specific model to download (short name or repo_id)")
 @click.option("--all", "download_all", is_flag=True, help="Download default models for all tasks")
 @click.option("--force", "-f", is_flag=True, help="Re-download even if already exists")
+@click.option("--resume/--no-resume", default=True, help="Resume partial downloads (default: enabled)")
 @click.pass_context
 def download_command(
     ctx: click.Context,
@@ -903,6 +904,7 @@ def download_command(
     model: Optional[str],
     download_all: bool,
     force: bool,
+    resume: bool,
 ):
     """Download models from HuggingFace Hub.
     
@@ -943,6 +945,7 @@ def download_command(
                     repo_id=info.repo_id,
                     size_gb=info.size_gb,
                     force=force,
+                    resume=resume,
                     pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
                 )
                 click.echo("")
@@ -979,6 +982,7 @@ def download_command(
             repo_id=info.repo_id,
             size_gb=info.size_gb,
             force=force,
+            resume=resume,
             pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
         )
         return
@@ -997,6 +1001,7 @@ def download_command(
             repo_id=info.repo_id,
             size_gb=info.size_gb,
             force=force,
+            resume=resume,
             pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
         )
         return
@@ -1024,14 +1029,26 @@ def status_command(ctx: click.Context):
     Displays information about:
     - Models directory location
     - Downloaded models and their sizes
+    - Partial downloads (resumable)
     - Total disk usage
     """
-    from hftool.core.download import get_models_dir, get_models_disk_usage, list_downloaded_models
+    from hftool.core.download import get_models_dir, get_models_disk_usage, list_downloaded_models, get_partial_downloads
     from hftool.core.models import find_model_by_repo_id
     
     models_dir = get_models_dir()
     click.echo(f"Models directory: {models_dir}")
     click.echo("")
+    
+    # Check for partial downloads
+    partial_downloads = get_partial_downloads()
+    if partial_downloads:
+        click.echo(click.style("Partial downloads (resumable):", fg="yellow"))
+        click.echo("-" * 60)
+        for partial in partial_downloads:
+            repo_id = partial["repo_id"]
+            click.echo(f"  {repo_id}")
+            click.echo(f"    Resume: hftool download -m {repo_id}")
+        click.echo("")
     
     usage = get_models_disk_usage()
     
@@ -1395,6 +1412,124 @@ def benchmark_command(
         
         click.echo("")
         click.echo(f"Results saved to: {get_benchmarks_file()}")
+
+
+# =============================================================================
+# COMPLETION COMMAND
+# =============================================================================
+
+@main.command("completion")
+@click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]), required=False)
+@click.option("--install", is_flag=True, help="Install completion for current shell")
+@click.pass_context
+def completion_command(ctx: click.Context, shell: Optional[str], install: bool):
+    """Show or install shell completion scripts.
+    
+    \b
+    Examples:
+      hftool completion bash               # Show bash completion script
+      hftool completion zsh                # Show zsh completion script
+      hftool completion fish               # Show fish completion script
+      hftool completion --install          # Auto-detect and install
+      hftool completion bash --install     # Install bash completion
+    
+    \b
+    After installation, restart your shell or run:
+      source ~/.bashrc    # for bash
+      source ~/.zshrc     # for zsh
+      # fish completion loads automatically
+    """
+    from hftool.core.completion import (
+        get_shell_name, 
+        get_completion_script, 
+        install_completion
+    )
+    
+    # Auto-detect shell if not specified
+    if shell is None:
+        shell = get_shell_name()
+        if shell is None:
+            click.echo("Error: Could not detect shell. Please specify: bash, zsh, or fish", err=True)
+            sys.exit(1)
+    
+    # Install completion
+    if install:
+        try:
+            if install_completion(shell):
+                click.echo(f"Completion installed for {shell}")
+                click.echo("")
+                click.echo("Restart your shell or run:")
+                if shell == "bash":
+                    click.echo("  source ~/.bashrc")
+                elif shell == "zsh":
+                    click.echo("  source ~/.zshrc")
+                elif shell == "fish":
+                    click.echo("  # fish completion loads automatically")
+            else:
+                click.echo(f"Completion already installed for {shell}")
+        except Exception as e:
+            click.echo(f"Error installing completion: {e}", err=True)
+            sys.exit(1)
+        return
+    
+    # Show completion script
+    try:
+        script = get_completion_script(shell)
+        click.echo(script)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+# =============================================================================
+# DOCTOR COMMAND
+# =============================================================================
+
+@main.command("doctor")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def doctor_command(ctx: click.Context, as_json: bool):
+    """Run system diagnostics and check hftool health.
+    
+    \b
+    Checks:
+      - Python version
+      - PyTorch installation
+      - GPU availability
+      - ffmpeg (required for video/audio)
+      - Network connectivity
+      - Optional features
+      - Configuration files
+    
+    \b
+    Examples:
+      hftool doctor              # Run all checks
+      hftool doctor --json       # Output as JSON
+    
+    \b
+    Exit codes:
+      0 = All checks passed
+      1 = Warnings found
+      2 = Errors found
+    """
+    from hftool.core.doctor import run_doctor_checks, format_doctor_report
+    import json as json_module
+    
+    # Run all checks
+    report = run_doctor_checks()
+    
+    # Output results
+    if as_json:
+        output = report.to_dict()
+        click.echo(json_module.dumps(output, indent=2))
+    else:
+        output = format_doctor_report(report, use_color=True)
+        if output:  # Plain text fallback
+            click.echo(output)
+        # Otherwise rich already printed to console
+    
+    # Exit with appropriate code
+    sys.exit(report.get_exit_code())
 
 
 # =============================================================================

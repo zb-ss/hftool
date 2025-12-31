@@ -494,6 +494,58 @@ Use dry-run to:
 
 ---
 
+## Shell Completions
+
+Enable tab completion for faster CLI usage:
+
+```bash
+# Auto-detect shell and install
+hftool completion --install
+
+# Show completion script for bash
+hftool completion bash
+
+# Install for specific shell
+hftool completion zsh --install
+```
+
+After installation, restart your shell or run:
+- bash: `source ~/.bashrc`
+- zsh: `source ~/.zshrc`
+- fish: Completions load automatically
+
+**Completions include**:
+- Task names and aliases (t2i, text-to-image, etc.)
+- Model names (z-image-turbo, whisper-large-v3, etc.)
+- Device options (auto, cuda, mps, cpu)
+- File picker syntax (@, @?, @~, etc.)
+
+---
+
+## System Diagnostics
+
+Check your system setup and troubleshoot issues:
+
+```bash
+# Run all diagnostic checks
+hftool doctor
+
+# Output as JSON
+hftool doctor --json
+```
+
+**Checks performed**:
+- Python version (requires 3.10+)
+- PyTorch installation and GPU detection
+- ffmpeg availability (for video/audio tasks)
+- Network connectivity to HuggingFace Hub
+- Optional feature dependencies
+- Configuration file status
+
+Exit codes: 0=OK, 1=warnings, 2=errors
+
+---
+
 ## Model Management
 
 ### List Available Models
@@ -531,7 +583,14 @@ hftool download --all
 
 # Re-download (force)
 hftool download -t t2i -f
+
+# Resume interrupted download (default)
+hftool download -t t2i
+# Disable resume
+hftool download -t t2i --no-resume
 ```
+
+**Note**: Downloads automatically resume if interrupted. Use `hftool status` to see partial downloads.
 
 ### Check Status
 
