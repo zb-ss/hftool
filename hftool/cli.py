@@ -110,6 +110,15 @@ if "PYTORCH_CUDA_ALLOC_CONF" not in os.environ:
 
 import click
 
+# Import shell completion functions
+from hftool.core.completion import (
+    complete_tasks,
+    complete_models,
+    complete_devices,
+    complete_dtypes,
+    complete_input,
+)
+
 # Suppress known harmless warnings from dependencies
 # - PyTorch CUDA warning when using ROCm or CPU
 # - Deprecation warnings from diffusers internals
@@ -438,12 +447,12 @@ _EXTRA_ARGS_CACHE = _extract_extra_args()
 
 
 @click.group(invoke_without_command=True)
-@click.option("--task", "-t", default=None, help="Task to perform (e.g., text-to-image, tts, asr)")
-@click.option("--model", "-m", default=None, help="Model name or path (uses task default if not specified)")
-@click.option("--input", "-i", "input_data", default=None, help="Input data (text, file path, @ reference, @? for interactive, @*.ext for glob)")
+@click.option("--task", "-t", default=None, shell_complete=complete_tasks, help="Task to perform (e.g., text-to-image, tts, asr)")
+@click.option("--model", "-m", default=None, shell_complete=complete_models, help="Model name or path (uses task default if not specified)")
+@click.option("--input", "-i", "input_data", default=None, shell_complete=complete_input, help="Input data (text, file path, @ reference, @? for interactive, @*.ext for glob)")
 @click.option("--output-file", "-o", default=None, help="Output file path (auto-generated if omitted)")
-@click.option("--device", "-d", default="auto", help="Device to use (auto, cuda, mps, cpu)")
-@click.option("--dtype", default=None, help="Data type (bfloat16, float16, float32)")
+@click.option("--device", "-d", default="auto", shell_complete=complete_devices, help="Device to use (auto, cuda, mps, cpu)")
+@click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type (bfloat16, float16, float32)")
 @click.option("--seed", type=int, default=None, help="Random seed for reproducible generation")
 @click.option("--interactive", is_flag=True, help="Interactive mode for complex inputs (JSON builder)")
 @click.option("--dry-run", is_flag=True, help="Preview operation without executing (shows model info, VRAM estimate, parameters)")
@@ -622,12 +631,12 @@ def setup_command(ctx: click.Context):
 # =============================================================================
 
 @main.command("run")
-@click.option("--task", "-t", required=True, help="Task to perform")
-@click.option("--model", "-m", default=None, help="Model name or path")
-@click.option("--input", "-i", "input_data", default=None, help="Input data (@ references or @? for interactive)")
+@click.option("--task", "-t", required=True, shell_complete=complete_tasks, help="Task to perform")
+@click.option("--model", "-m", default=None, shell_complete=complete_models, help="Model name or path")
+@click.option("--input", "-i", "input_data", default=None, shell_complete=complete_input, help="Input data (@ references or @? for interactive)")
 @click.option("--output-file", "-o", default=None, help="Output file path")
-@click.option("--device", "-d", default="auto", help="Device to use")
-@click.option("--dtype", default=None, help="Data type")
+@click.option("--device", "-d", default="auto", shell_complete=complete_devices, help="Device to use")
+@click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type")
 @click.option("--seed", type=int, default=None, help="Random seed for reproducibility")
 @click.option("--interactive", is_flag=True, help="Interactive JSON builder mode")
 @click.option("--open/--no-open", default=None, help="Open output file with default application")
@@ -788,7 +797,7 @@ def history_command(
 # =============================================================================
 
 @main.command("models")
-@click.option("--task", "-t", default=None, help="Filter by task (e.g., t2i, tts)")
+@click.option("--task", "-t", default=None, shell_complete=complete_tasks, help="Filter by task (e.g., t2i, tts)")
 @click.option("--downloaded", "-d", is_flag=True, help="Show only downloaded models")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
@@ -892,8 +901,8 @@ def models_command(
 # =============================================================================
 
 @main.command("download")
-@click.option("--task", "-t", default=None, help="Download default model for task")
-@click.option("--model", "-m", default=None, help="Specific model to download (short name or repo_id)")
+@click.option("--task", "-t", default=None, shell_complete=complete_tasks, help="Download default model for task")
+@click.option("--model", "-m", default=None, shell_complete=complete_models, help="Specific model to download (short name or repo_id)")
 @click.option("--all", "download_all", is_flag=True, help="Download default models for all tasks")
 @click.option("--force", "-f", is_flag=True, help="Re-download even if already exists")
 @click.option("--resume/--no-resume", default=True, help="Resume partial downloads (default: enabled)")
@@ -1254,11 +1263,11 @@ def info_command(ctx: click.Context, model_name: str, as_json: bool):
 # =============================================================================
 
 @main.command("benchmark")
-@click.option("--task", "-t", required=False, help="Task to benchmark")
-@click.option("--model", "-m", required=False, help="Model to benchmark")
+@click.option("--task", "-t", required=False, shell_complete=complete_tasks, help="Task to benchmark")
+@click.option("--model", "-m", required=False, shell_complete=complete_models, help="Model to benchmark")
 @click.option("--all", "benchmark_all", is_flag=True, help="Benchmark all downloaded models")
-@click.option("--device", "-d", default="auto", help="Device to use")
-@click.option("--dtype", default=None, help="Data type")
+@click.option("--device", "-d", default="auto", shell_complete=complete_devices, help="Device to use")
+@click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type")
 @click.option("--skip-large", is_flag=True, help="Skip models larger than 15GB")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context

@@ -208,6 +208,11 @@ class TestCompletionInstall:
             install_completion("tcsh")
 
 
+def _get_completion_values(items):
+    """Extract string values from CompletionItem objects."""
+    return [item.value for item in items]
+
+
 class TestCompleters:
     """Test Click completer classes."""
     
@@ -225,14 +230,14 @@ class TestCompleters:
         ctx = MockContext()
         param = MockParam()
         
-        # Test completion
-        matches = completer(ctx, param, "text")
+        # Test completion - completers now return CompletionItem objects
+        matches = _get_completion_values(completer(ctx, param, "text"))
         assert "text-to-image" in matches
         
-        matches = completer(ctx, param, "t2")
+        matches = _get_completion_values(completer(ctx, param, "t2"))
         assert "t2i" in matches
         
-        matches = completer(ctx, param, "xyz")
+        matches = _get_completion_values(completer(ctx, param, "xyz"))
         assert len(matches) == 0
     
     def test_model_completer(self):
@@ -248,10 +253,10 @@ class TestCompleters:
         ctx = MockContext()
         param = MockParam()
         
-        matches = completer(ctx, param, "z-")
+        matches = _get_completion_values(completer(ctx, param, "z-"))
         assert "z-image-turbo" in matches
         
-        matches = completer(ctx, param, "whisper")
+        matches = _get_completion_values(completer(ctx, param, "whisper"))
         assert len(matches) == 0  # Not in text-to-image task
     
     def test_model_completer_no_task(self):
@@ -268,7 +273,7 @@ class TestCompleters:
         param = MockParam()
         
         # Should return all models
-        matches = completer(ctx, param, "whisper")
+        matches = _get_completion_values(completer(ctx, param, "whisper"))
         assert "whisper-large-v3" in matches
     
     def test_device_completer(self):
@@ -284,11 +289,11 @@ class TestCompleters:
         ctx = MockContext()
         param = MockParam()
         
-        matches = completer(ctx, param, "cu")
+        matches = _get_completion_values(completer(ctx, param, "cu"))
         assert "cuda" in matches
         assert "cuda:0" in matches
         
-        matches = completer(ctx, param, "m")
+        matches = _get_completion_values(completer(ctx, param, "m"))
         assert "mps" in matches
     
     def test_dtype_completer(self):
@@ -304,11 +309,11 @@ class TestCompleters:
         ctx = MockContext()
         param = MockParam()
         
-        matches = completer(ctx, param, "float")
+        matches = _get_completion_values(completer(ctx, param, "float"))
         assert "float32" in matches
         assert "float16" in matches
         
-        matches = completer(ctx, param, "bf")
+        matches = _get_completion_values(completer(ctx, param, "bf"))
         assert "bfloat16" in matches
     
     def test_file_picker_completer(self):
@@ -325,16 +330,16 @@ class TestCompleters:
         param = MockParam()
         
         # Test @ syntax completion
-        matches = completer(ctx, param, "@")
+        matches = _get_completion_values(completer(ctx, param, "@"))
         assert "@" in matches
         assert "@?" in matches
         assert "@." in matches
         assert "@~" in matches
         assert "@@" in matches
         
-        matches = completer(ctx, param, "@?")
+        matches = _get_completion_values(completer(ctx, param, "@?"))
         assert "@?" in matches
         
         # Non-@ input should return empty
-        matches = completer(ctx, param, "file")
+        matches = _get_completion_values(completer(ctx, param, "file"))
         assert len(matches) == 0

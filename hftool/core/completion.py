@@ -2,12 +2,21 @@
 
 Provides custom completers for Click's built-in shell completion system.
 Supports bash, zsh, and fish shells.
+
+Usage:
+    The completer functions (complete_tasks, complete_models, etc.) should be
+    passed to click.option() via the shell_complete parameter:
+    
+    @click.option("--task", "-t", shell_complete=complete_tasks)
+    
+    These functions return CompletionItem objects for proper shell integration.
 """
 
 import os
 from typing import List, Optional
 
 import click
+from click.shell_completion import CompletionItem
 
 
 def get_task_names() -> List[str]:
@@ -176,106 +185,187 @@ def install_completion(shell: str, prog_name: str = "hftool") -> bool:
     return True
 
 
-# Custom completers for Click commands
+# =============================================================================
+# Shell completion functions for Click
+# =============================================================================
+# These functions are passed to click.option() via the shell_complete parameter.
+# They must return a list of CompletionItem objects.
+
+
+def complete_tasks(
+    ctx: click.Context, 
+    param: click.Parameter, 
+    incomplete: str
+) -> List[CompletionItem]:
+    """Complete task names.
+    
+    Args:
+        ctx: Click context
+        param: Parameter being completed
+        incomplete: Incomplete value being typed
+    
+    Returns:
+        List of CompletionItem objects for matching tasks
+    """
+    tasks = get_task_names()
+    return [
+        CompletionItem(t, help=f"Task: {t}")
+        for t in tasks 
+        if t.startswith(incomplete)
+    ]
+
+
+def complete_models(
+    ctx: click.Context, 
+    param: click.Parameter, 
+    incomplete: str
+) -> List[CompletionItem]:
+    """Complete model names.
+    
+    Args:
+        ctx: Click context
+        param: Parameter being completed
+        incomplete: Incomplete value being typed
+    
+    Returns:
+        List of CompletionItem objects for matching models
+    """
+    # Try to get task from context for task-specific models
+    task = ctx.params.get("task") if ctx.params else None
+    models = get_model_names(task)
+    return [
+        CompletionItem(m)
+        for m in models 
+        if m.startswith(incomplete)
+    ]
+
+
+def complete_devices(
+    ctx: click.Context, 
+    param: click.Parameter, 
+    incomplete: str
+) -> List[CompletionItem]:
+    """Complete device names.
+    
+    Args:
+        ctx: Click context
+        param: Parameter being completed
+        incomplete: Incomplete value being typed
+    
+    Returns:
+        List of CompletionItem objects for matching devices
+    """
+    devices = get_device_options()
+    help_texts = {
+        "auto": "Auto-detect best device",
+        "cuda": "NVIDIA GPU",
+        "cuda:0": "NVIDIA GPU #0",
+        "cuda:1": "NVIDIA GPU #1",
+        "mps": "Apple Silicon GPU",
+        "cpu": "CPU only",
+    }
+    return [
+        CompletionItem(d, help=help_texts.get(d, ""))
+        for d in devices 
+        if d.startswith(incomplete)
+    ]
+
+
+def complete_dtypes(
+    ctx: click.Context, 
+    param: click.Parameter, 
+    incomplete: str
+) -> List[CompletionItem]:
+    """Complete dtype names.
+    
+    Args:
+        ctx: Click context
+        param: Parameter being completed
+        incomplete: Incomplete value being typed
+    
+    Returns:
+        List of CompletionItem objects for matching dtypes
+    """
+    dtypes = get_dtype_options()
+    help_texts = {
+        "float32": "Full precision (more VRAM)",
+        "float16": "Half precision (less VRAM)",
+        "bfloat16": "Brain float (good balance)",
+    }
+    return [
+        CompletionItem(d, help=help_texts.get(d, ""))
+        for d in dtypes 
+        if d.startswith(incomplete)
+    ]
+
+
+def complete_input(
+    ctx: click.Context, 
+    param: click.Parameter, 
+    incomplete: str
+) -> List[CompletionItem]:
+    """Complete input values including @ file picker syntax.
+    
+    Args:
+        ctx: Click context
+        param: Parameter being completed
+        incomplete: Incomplete value being typed
+    
+    Returns:
+        List of CompletionItem objects
+    """
+    # If starts with @, provide file picker syntax options
+    if incomplete.startswith("@") or incomplete == "":
+        options = [
+            ("@", "Interactive file picker"),
+            ("@?", "Fuzzy search mode"),
+            ("@.", "Pick from current directory"),
+            ("@~", "Pick from home directory"),
+            ("@@", "Recent files from history"),
+        ]
+        return [
+            CompletionItem(opt, help=desc)
+            for opt, desc in options 
+            if opt.startswith(incomplete) or incomplete == ""
+        ]
+    
+    # Otherwise, let default file completion handle it
+    return []
+
+
+# Legacy class-based completers (kept for backward compatibility)
+# These are deprecated - use the function-based completers above
 
 class TaskCompleter:
-    """Custom completer for task names."""
+    """Deprecated: Use complete_tasks function instead."""
     
-    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[str]:
-        """Complete task names.
-        
-        Args:
-            ctx: Click context
-            param: Parameter being completed
-            incomplete: Incomplete value being typed
-        
-        Returns:
-            List of matching task names
-        """
-        tasks = get_task_names()
-        return [t for t in tasks if t.startswith(incomplete)]
+    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[CompletionItem]:
+        return complete_tasks(ctx, param, incomplete)
 
 
 class ModelCompleter:
-    """Custom completer for model names."""
+    """Deprecated: Use complete_models function instead."""
     
-    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[str]:
-        """Complete model names.
-        
-        Args:
-            ctx: Click context
-            param: Parameter being completed
-            incomplete: Incomplete value being typed
-        
-        Returns:
-            List of matching model names
-        """
-        # Try to get task from context
-        task = ctx.params.get("task")
-        models = get_model_names(task)
-        return [m for m in models if m.startswith(incomplete)]
+    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[CompletionItem]:
+        return complete_models(ctx, param, incomplete)
 
 
 class DeviceCompleter:
-    """Custom completer for device names."""
+    """Deprecated: Use complete_devices function instead."""
     
-    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[str]:
-        """Complete device names.
-        
-        Args:
-            ctx: Click context
-            param: Parameter being completed
-            incomplete: Incomplete value being typed
-        
-        Returns:
-            List of matching device names
-        """
-        devices = get_device_options()
-        return [d for d in devices if d.startswith(incomplete)]
+    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[CompletionItem]:
+        return complete_devices(ctx, param, incomplete)
 
 
 class DtypeCompleter:
-    """Custom completer for dtype names."""
+    """Deprecated: Use complete_dtypes function instead."""
     
-    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[str]:
-        """Complete dtype names.
-        
-        Args:
-            ctx: Click context
-            param: Parameter being completed
-            incomplete: Incomplete value being typed
-        
-        Returns:
-            List of matching dtype names
-        """
-        dtypes = get_dtype_options()
-        return [d for d in dtypes if d.startswith(incomplete)]
+    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[CompletionItem]:
+        return complete_dtypes(ctx, param, incomplete)
 
 
 class FilePickerCompleter:
-    """Custom completer for @ file picker syntax."""
+    """Deprecated: Use complete_input function instead."""
     
-    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[str]:
-        """Complete @ file picker syntax.
-        
-        Args:
-            ctx: Click context
-            param: Parameter being completed
-            incomplete: Incomplete value being typed
-        
-        Returns:
-            List of matching file picker options
-        """
-        if not incomplete.startswith("@"):
-            return []
-        
-        # Provide @ syntax options
-        options = [
-            "@",      # Interactive picker
-            "@?",     # Fuzzy search
-            "@.",     # Current directory
-            "@~",     # Home directory
-            "@@",     # Recent files
-        ]
-        
-        return [o for o in options if o.startswith(incomplete)]
+    def __call__(self, ctx: click.Context, param: click.Parameter, incomplete: str) -> List[CompletionItem]:
+        return complete_input(ctx, param, incomplete)
