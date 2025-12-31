@@ -440,10 +440,12 @@ _EXTRA_ARGS_CACHE = _extract_extra_args()
 @click.group(invoke_without_command=True)
 @click.option("--task", "-t", default=None, help="Task to perform (e.g., text-to-image, tts, asr)")
 @click.option("--model", "-m", default=None, help="Model name or path (uses task default if not specified)")
-@click.option("--input", "-i", "input_data", default=None, help="Input data (text, file path, or URL)")
+@click.option("--input", "-i", "input_data", default=None, help="Input data (text, file path, URL, @ reference, or @? for interactive)")
 @click.option("--output-file", "-o", default=None, help="Output file path")
 @click.option("--device", "-d", default="auto", help="Device to use (auto, cuda, mps, cpu)")
 @click.option("--dtype", default=None, help="Data type (bfloat16, float16, float32)")
+@click.option("--seed", type=int, default=None, help="Random seed for reproducible generation")
+@click.option("--interactive", is_flag=True, help="Interactive mode for complex inputs (JSON builder)")
 @click.option("--open/--no-open", default=None, help="Open output file with default application (auto-detected by default)")
 @click.option("--list-tasks", is_flag=True, help="List all available tasks")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
@@ -456,6 +458,8 @@ def main(
     output_file: Optional[str],
     device: str,
     dtype: Optional[str],
+    seed: Optional[int],
+    interactive: bool,
     open: Optional[bool],
     list_tasks: bool,
     verbose: bool,
@@ -493,6 +497,8 @@ def main(
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["open"] = open
+    ctx.obj["seed"] = seed
+    ctx.obj["interactive"] = interactive
     ctx.obj["extra_args"] = tuple(_EXTRA_ARGS_CACHE)
     
     # Handle --list-tasks
@@ -511,8 +517,9 @@ def main(
     
     # Run task (legacy behavior for -t flag)
     if task is not None:
-        if input_data is None:
-            click.echo("Error: Missing option '--input' / '-i'.", err=True)
+        # Handle interactive mode or missing input
+        if input_data is None and not interactive:
+            click.echo("Error: Missing option '--input' / '-i' (or use --interactive).", err=True)
             sys.exit(1)
         
         # Ensure PyTorch is installed before running tasks
@@ -527,6 +534,8 @@ def main(
             output_file=output_file,
             device=device,
             dtype=dtype,
+            seed=seed,
+            interactive=interactive,
             verbose=verbose,
             open_output=open,
         )
@@ -565,20 +574,24 @@ def setup_command(ctx: click.Context):
 @main.command("run")
 @click.option("--task", "-t", required=True, help="Task to perform")
 @click.option("--model", "-m", default=None, help="Model name or path")
-@click.option("--input", "-i", "input_data", required=True, help="Input data")
+@click.option("--input", "-i", "input_data", default=None, help="Input data (@ references or @? for interactive)")
 @click.option("--output-file", "-o", default=None, help="Output file path")
 @click.option("--device", "-d", default="auto", help="Device to use")
 @click.option("--dtype", default=None, help="Data type")
+@click.option("--seed", type=int, default=None, help="Random seed for reproducibility")
+@click.option("--interactive", is_flag=True, help="Interactive JSON builder mode")
 @click.option("--open/--no-open", default=None, help="Open output file with default application")
 @click.pass_context
 def run_command(
     ctx: click.Context,
     task: str,
     model: Optional[str],
-    input_data: str,
+    input_data: Optional[str],
     output_file: Optional[str],
     device: str,
     dtype: Optional[str],
+    seed: Optional[int],
+    interactive: bool,
     open: Optional[bool],
 ):
     """Run a task with the specified model."""
@@ -589,7 +602,135 @@ def run_command(
     verbose = ctx.obj.get("verbose", False)
     # Use command-level --open if specified, otherwise use global
     open_output = open if open is not None else ctx.obj.get("open")
-    _run_task_command(ctx, task, model, input_data, output_file, device, dtype, verbose, open_output)
+    # Use command-level --seed if specified, otherwise use global
+    final_seed = seed if seed is not None else ctx.obj.get("seed")
+    # Use command-level --interactive if specified, otherwise use global
+    final_interactive = interactive or ctx.obj.get("interactive", False)
+    
+    _run_task_command(ctx, task, model, input_data, output_file, device, dtype, final_seed, final_interactive, verbose, open_output)
+
+
+# =============================================================================
+# HISTORY COMMAND
+# =============================================================================
+
+@main.command("history")
+@click.option("--clear", is_flag=True, help="Clear all history")
+@click.option("--rerun", type=int, metavar="ID", help="Re-run command from history")
+@click.option("--limit", "-n", type=int, default=10, help="Number of entries to show")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def history_command(
+    ctx: click.Context,
+    clear: bool,
+    rerun: Optional[int],
+    limit: int,
+    as_json: bool,
+):
+    """View and manage command history.
+    
+    \b
+    Examples:
+        hftool history                 # Show recent history
+        hftool history -n 20           # Show last 20 commands
+        hftool history --rerun 42      # Re-run command #42
+        hftool history --clear         # Clear all history
+    """
+    from hftool.core.history import History
+    
+    history = History.get()
+    
+    # Clear history
+    if clear:
+        if click.confirm("Clear all command history?"):
+            history.clear()
+            click.echo("History cleared.")
+        return
+    
+    # Re-run command
+    if rerun is not None:
+        entry = history.get_by_id(rerun)
+        if entry is None:
+            click.echo(f"Error: No history entry with ID {rerun}", err=True)
+            sys.exit(1)
+        
+        click.echo(f"Re-running command #{entry.id} from {entry.get_timestamp_str()}:")
+        click.echo(f"  {entry.to_command()}")
+        click.echo("")
+        
+        if not click.confirm("Continue?", default=True):
+            return
+        
+        # Extract parameters and re-run
+        _run_task_command(
+            ctx=ctx,
+            task=entry.task,
+            model=entry.model,
+            input_data=entry.input_data,
+            output_file=entry.output_file,
+            device=entry.device,
+            dtype=entry.dtype,
+            seed=entry.seed,
+            interactive=False,
+            verbose=ctx.obj.get("verbose", False),
+            open_output=ctx.obj.get("open"),
+        )
+        return
+    
+    # Show history
+    entries = history.get_recent(limit=limit)
+    
+    if not entries:
+        click.echo("No command history yet.")
+        return
+    
+    if as_json:
+        import json
+        from dataclasses import asdict
+        output = [asdict(entry) for entry in entries]
+        click.echo(json.dumps(output, indent=2))
+        return
+    
+    # Text output
+    click.echo("")
+    click.echo("Recent command history:")
+    click.echo("=" * 80)
+    
+    for entry in entries:
+        # Status indicator
+        status = click.style("✓", fg="green") if entry.success else click.style("✗", fg="red")
+        
+        # Header
+        click.echo(f"\n[{entry.id}] {status} {entry.get_timestamp_str()} - {entry.task}")
+        
+        # Details
+        if entry.model:
+            click.echo(f"    Model: {entry.model}")
+        
+        # Show input (truncate if too long)
+        input_display = entry.input_data
+        if len(input_display) > 60:
+            input_display = input_display[:57] + "..."
+        click.echo(f"    Input: {input_display}")
+        
+        if entry.output_file:
+            click.echo(f"    Output: {entry.output_file}")
+        
+        if entry.seed is not None:
+            click.echo(f"    Seed: {entry.seed}")
+        
+        if not entry.success and entry.error_message:
+            error_display = entry.error_message
+            if len(error_display) > 60:
+                error_display = error_display[:57] + "..."
+            click.echo(click.style(f"    Error: {error_display}", fg="red"))
+        
+        # Show command for reproduction
+        click.echo(click.style(f"    Rerun: hftool history --rerun {entry.id}", fg="cyan"))
+    
+    click.echo("")
+    click.echo("=" * 80)
+    click.echo(f"Showing {len(entries)} most recent commands")
 
 
 # =============================================================================
@@ -1114,17 +1255,30 @@ def _run_task_command(
     ctx: click.Context,
     task: str,
     model: Optional[str],
-    input_data: str,
+    input_data: Optional[str],
     output_file: Optional[str],
     device: str,
     dtype: Optional[str],
+    seed: Optional[int],
+    interactive: bool,
     verbose: bool,
     open_output: Optional[bool] = None,
 ):
     """Execute a task (internal helper)."""
+    import random
+    import json as json_module
+    
     # Parse extra arguments (after --)
     extra_args = ctx.obj.get("extra_args", ()) if ctx.obj else ()
     extra_kwargs = _parse_extra_args(list(extra_args))
+    
+    # Generate random seed if not provided
+    if seed is None:
+        seed = random.randint(0, 2**32 - 1)
+    
+    # Add seed to extra_kwargs (will be passed to model if supported)
+    if "generator_seed" not in extra_kwargs and "seed" not in extra_kwargs:
+        extra_kwargs["seed"] = seed
     
     if verbose:
         click.echo(f"Task: {task}")
@@ -1177,6 +1331,43 @@ def _run_task_command(
         
         # Merge: config params < extra_kwargs (CLI has priority)
         extra_kwargs = {**task_params, **extra_kwargs}
+        
+        # Handle interactive mode and file references
+        if interactive or (input_data and input_data == "@?"):
+            # Interactive JSON builder
+            try:
+                from hftool.io.interactive_input import build_interactive_input
+                input_data = build_interactive_input(resolved_task)
+            except ValueError as e:
+                click.echo(f"Error: {e}", err=True)
+                sys.exit(1)
+        elif input_data and input_data.startswith("@"):
+            # Resolve @ file reference
+            try:
+                from hftool.io.file_picker import resolve_file_reference
+                input_data = resolve_file_reference(input_data, task=resolved_task)
+                if verbose:
+                    click.echo(f"Resolved file reference to: {input_data}")
+            except ValueError as e:
+                click.echo(f"Error resolving file reference: {e}", err=True)
+                sys.exit(1)
+        elif input_data is None and interactive:
+            # Interactive mode but no schema available - build basic JSON
+            try:
+                from hftool.io.interactive_input import build_interactive_input
+                input_data = build_interactive_input(resolved_task)
+            except ValueError as e:
+                # Fall back to text prompt
+                try:
+                    input_data = click.prompt("Enter input data")
+                except click.Abort:
+                    click.echo("Input cancelled", err=True)
+                    sys.exit(1)
+        
+        # At this point input_data must be set
+        if input_data is None:
+            click.echo("Error: No input data provided", err=True)
+            sys.exit(1)
         
         # Get task configuration
         task_config = get_task_config(resolved_task)
@@ -1251,6 +1442,19 @@ def _run_task_command(
         if output_file:
             click.echo(f"Output saved to: {output_file}")
             
+            # Show reproduction command
+            if verbose or seed is not None:
+                repro_parts = ["hftool", "-t", resolved_task]
+                if model:
+                    repro_parts.extend(["-m", model])
+                repro_parts.extend(["-i", f'"{input_data}"'])
+                if output_file:
+                    repro_parts.extend(["-o", output_file])
+                if seed is not None:
+                    repro_parts.extend(["--seed", str(seed)])
+                click.echo(f"Seed: {seed}")
+                click.echo(f"To reproduce: {' '.join(repro_parts)}")
+            
             # Determine if we should open the file
             should_open = _should_open_output(
                 open_output=open_output,
@@ -1265,9 +1469,40 @@ def _run_task_command(
         elif isinstance(result, dict) and "text" in result:
             click.echo(result["text"])
         
+        # Record to history (success)
+        from hftool.core.history import History
+        history = History.get()
+        history.add(
+            task=resolved_task,
+            model=model,
+            input_data=input_data,
+            output_file=output_file,
+            device=device,
+            dtype=dtype,
+            seed=seed,
+            extra_args=extra_kwargs,
+            success=True,
+        )
+        
     except SystemExit:
         raise
     except Exception as e:
+        # Record to history (failure)
+        from hftool.core.history import History
+        history = History.get()
+        history.add(
+            task=task if 'resolved_task' not in locals() else resolved_task,
+            model=model,
+            input_data=input_data or "",
+            output_file=output_file,
+            device=device,
+            dtype=dtype,
+            seed=seed,
+            extra_args=extra_kwargs if 'extra_kwargs' in locals() else {},
+            success=False,
+            error_message=str(e),
+        )
+        
         click.echo(f"Error: {e}", err=True)
         if verbose:
             import traceback

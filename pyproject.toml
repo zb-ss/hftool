@@ -105,6 +105,11 @@ with_config = [
     "tomli>=2.0.1,<3.0; python_version < '3.11'",
 ]
 
+# Interactive features (file picker, interactive prompts)
+with_interactive = [
+    "InquirerPy>=0.3.4,<1.0",
+]
+
 # Development dependencies
 dev = [
     "pytest>=7.0.0",
@@ -132,6 +137,8 @@ all = [
     "opencv-python-headless>=4.5.0",
     # Config file support (Python < 3.11)
     "tomli>=2.0.1,<3.0; python_version < '3.11'",
+    # Interactive features
+    "InquirerPy>=0.3.4,<1.0",
 ]
 
 [project.scripts]
