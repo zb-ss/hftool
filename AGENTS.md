@@ -9,6 +9,8 @@
 - View config: `hftool config show`
 - View history: `hftool history` or `hftool history --rerun <id>`
 - Preview operations: `hftool -t <task> -i <input> --dry-run`
+- System diagnostics: `hftool doctor`
+- Shell completions: `hftool completion --install`
 - Run tests: `pytest tests/` or `pytest tests/test_core.py::TestTaskRegistry::test_name`
 
 ## New Features (v0.3.0+)
@@ -162,6 +164,47 @@ hftool -t t2i --batch-json batch.json
   {"input": "A dog", "output": "dog.png", "params": {"seed": 123}}
 ]
 ```
+
+### Phase 4 Features (Quality of Life)
+
+#### Shell Completions
+```bash
+hftool completion --install           # Auto-detect and install
+hftool completion bash                # Show bash completion script
+hftool completion zsh                 # Show zsh completion script
+hftool completion fish                # Show fish completion script
+hftool completion bash --install      # Install for bash
+```
+- Tab completion for tasks, models, devices, dtypes
+- File picker syntax completion (@, @?, @~, etc.)
+- Auto-detection and installation
+- Works with bash, zsh, and fish shells
+- Restart shell after installation
+
+#### Doctor Command
+```bash
+hftool doctor                         # Run system diagnostics
+hftool doctor --json                  # JSON output for automation
+```
+- Checks Python version (requires 3.10+)
+- Checks PyTorch installation and GPU
+- Checks ffmpeg availability
+- Checks network connectivity to HuggingFace
+- Shows installed optional features
+- Shows configuration status
+- Provides actionable suggestions
+- Exit codes: 0=OK, 1=warnings, 2=errors
+
+#### Resume Downloads
+```bash
+hftool download -t t2i --resume       # Resume interrupted download (default)
+hftool download -t t2i --no-resume    # Force fresh download
+hftool status                         # Shows resumable downloads
+```
+- Automatic resume for interrupted downloads
+- Detection of partial downloads
+- Status command shows resumable downloads
+- Enabled by default for reliability
 
 ## Supported Tasks
 - **text-to-image** (t2i): Z-Image, SDXL, FLUX - requires `[with_t2i]`
