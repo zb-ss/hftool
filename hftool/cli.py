@@ -440,12 +440,13 @@ _EXTRA_ARGS_CACHE = _extract_extra_args()
 @click.group(invoke_without_command=True)
 @click.option("--task", "-t", default=None, help="Task to perform (e.g., text-to-image, tts, asr)")
 @click.option("--model", "-m", default=None, help="Model name or path (uses task default if not specified)")
-@click.option("--input", "-i", "input_data", default=None, help="Input data (text, file path, URL, @ reference, or @? for interactive)")
-@click.option("--output-file", "-o", default=None, help="Output file path")
+@click.option("--input", "-i", "input_data", default=None, help="Input data (text, file path, @ reference, @? for interactive, @*.ext for glob)")
+@click.option("--output-file", "-o", default=None, help="Output file path (auto-generated if omitted)")
 @click.option("--device", "-d", default="auto", help="Device to use (auto, cuda, mps, cpu)")
 @click.option("--dtype", default=None, help="Data type (bfloat16, float16, float32)")
 @click.option("--seed", type=int, default=None, help="Random seed for reproducible generation")
 @click.option("--interactive", is_flag=True, help="Interactive mode for complex inputs (JSON builder)")
+@click.option("--dry-run", is_flag=True, help="Preview operation without executing (shows model info, VRAM estimate, parameters)")
 @click.option("--open/--no-open", default=None, help="Open output file with default application (auto-detected by default)")
 @click.option("--list-tasks", is_flag=True, help="List all available tasks")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
@@ -460,6 +461,7 @@ def main(
     dtype: Optional[str],
     seed: Optional[int],
     interactive: bool,
+    dry_run: bool,
     open: Optional[bool],
     list_tasks: bool,
     verbose: bool,
@@ -469,8 +471,35 @@ def main(
     \b
     QUICK START:
       hftool -t t2i -i "A cat in space" -o cat.png
-      hftool -t tts -i "Hello world" -o hello.wav
-      hftool -t asr -i recording.wav -o transcript.txt
+      hftool -t t2i -i @ -o cat.png              # Interactive file picker
+      hftool -t asr -i @*.wav -o transcript.txt  # Glob pattern
+    
+    \b
+    CONFIGURATION:
+      hftool config init                         # Create default config
+      hftool config show                         # View current config
+      hftool config edit                         # Edit in $EDITOR
+    
+    \b
+    PREVIEW & HISTORY:
+      hftool -t t2i -i "A cat" --dry-run         # Preview without running
+      hftool history                             # View command history
+      hftool history --rerun 5                   # Re-run command #5
+    
+    \b
+    FILE PICKER (@ syntax):
+      @           Interactive file picker
+      @?          Interactive with fuzzy search
+      @.          Pick from current directory
+      @~          Pick from home directory
+      @/path/     Pick from specific directory
+      @*.wav      Files matching glob pattern
+      @@          Recent files from history
+    
+    \b
+    INTERACTIVE MODE:
+      hftool -t i2i --interactive                # Guided JSON builder
+      hftool -t i2i -i @?                        # Trigger interactive mode
     
     \b
     MANAGE MODELS:
@@ -484,14 +513,14 @@ def main(
       # Text-to-Image with Z-Image
       hftool -t text-to-image -i "A cat in space" -o cat.png
     
-      # Text-to-Video with HunyuanVideo
-      hftool -t text-to-video -i "A person walking" -o video.mp4
-    
-      # Speech-to-Text with Whisper
-      hftool -t asr -i recording.wav -o transcript.txt
+      # Interactive file selection
+      hftool -t t2i -i @ -o output.png
     
       # Pass extra arguments (after --)
       hftool -t t2i -i "A cat" -o cat.png -- --num_inference_steps 20
+      
+      # Reproducible generation with seed
+      hftool -t t2i -i "A cat" -o cat.png --seed 42
     """
     # Store options in context for subcommands
     ctx.ensure_object(dict)
