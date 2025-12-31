@@ -17,11 +17,13 @@ A CLI for running HuggingFace models, optimized for AMD ROCm.
 - **Plus**: Text generation, classification, translation, and more via transformers pipelines
 
 ### User Experience
+- **Interactive Wizard** (`-I`): Full guided experience - select task, model, input, output, and all options
 - **File Picker** (`@` syntax): Interactive file selection with multiple modes (@, @?, @., @~, @*.ext, @@)
-- **Interactive Mode**: Guided JSON builder for complex inputs (image-to-image, etc.)
+- **Interactive Input**: Guided JSON builder for complex inputs (image-to-image, etc.)
 - **History Tracking**: View and re-run previous commands with `hftool history`
 - **Dry-Run Mode**: Preview operations without executing (--dry-run)
 - **Configuration Files**: Save preferences in TOML config files
+- **Shell Completions**: Tab completion for bash, zsh, and fish
 - **Better Error Messages**: Actionable suggestions when things go wrong
 - **Progress Bars**: Visual feedback during model loading and generation
 
@@ -148,7 +150,10 @@ pipx runpip hftool install torch torchvision torchaudio --index-url https://down
 ## Quick Start
 
 ```bash
-# Generate an image (auto-opens when done!)
+# Full interactive wizard - guided experience for beginners
+hftool -I
+
+# Or specify everything on command line
 hftool -t t2i -i "A cat in space" -o cat.png
 
 # Interactive file selection
@@ -162,6 +167,9 @@ hftool -t t2i -i "A cat" -o cat.png --seed 42
 
 # Re-run previous command
 hftool history --rerun 5
+
+# Install shell completions for tab completion
+hftool completion --install
 ```
 
 **New features**:

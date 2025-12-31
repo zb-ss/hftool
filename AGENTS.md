@@ -206,6 +206,25 @@ hftool status                         # Shows resumable downloads
 - Status command shows resumable downloads
 - Enabled by default for reliability
 
+#### Full Interactive Wizard
+```bash
+hftool -I                             # Full interactive wizard
+hftool --interactive-wizard           # Same as above
+```
+- Complete guided experience for all tasks
+- Step-by-step: task → model → input → output → options
+- Shows model download status and sizes
+- Supports text prompts, file selection, JSON builder
+- Device auto-detection with GPU info
+- Optional advanced parameters
+- Can be set as default via config or env:
+  ```toml
+  # ~/.hftool/config.toml
+  [defaults]
+  interactive = true
+  ```
+  Or: `HFTOOL_INTERACTIVE=1`
+
 ## Supported Tasks
 - **text-to-image** (t2i): Z-Image, SDXL, FLUX - requires `[with_t2i]`
 - **image-to-image** (i2i): Qwen Image Edit, SDXL Refiner - requires `[with_t2i]`

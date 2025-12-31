@@ -455,6 +455,7 @@ _EXTRA_ARGS_CACHE = _extract_extra_args()
 @click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type (bfloat16, float16, float32)")
 @click.option("--seed", type=int, default=None, help="Random seed for reproducible generation")
 @click.option("--interactive", is_flag=True, help="Interactive mode for complex inputs (JSON builder)")
+@click.option("-I", "--interactive-wizard", "wizard", is_flag=True, help="Full interactive wizard (select task, model, input, etc.)")
 @click.option("--dry-run", is_flag=True, help="Preview operation without executing (shows model info, VRAM estimate, parameters)")
 @click.option("--batch", default=None, help="Batch mode: process multiple inputs from file or directory")
 @click.option("--batch-json", default=None, help="Batch mode: process inputs from JSON array file")
@@ -476,6 +477,7 @@ def main(
     dtype: Optional[str],
     seed: Optional[int],
     interactive: bool,
+    wizard: bool,
     dry_run: bool,
     batch: Optional[str],
     batch_json: Optional[str],
@@ -519,8 +521,9 @@ def main(
     
     \b
     INTERACTIVE MODE:
-      hftool -t i2i --interactive                # Guided JSON builder
-      hftool -t i2i -i @?                        # Trigger interactive mode
+      hftool -I                                  # Full interactive wizard
+      hftool --interactive-wizard                # Same as above
+      hftool -t i2i --interactive                # Guided JSON builder for input
     
     \b
     MANAGE MODELS:
@@ -562,12 +565,53 @@ def main(
         _list_tasks()
         return
     
-    # If no subcommand and no task, show help
+    # Handle --interactive-wizard / -I (full wizard mode)
+    if wizard:
+        from hftool.io.interactive_mode import run_interactive_mode, check_interactive_mode
+        
+        # Ensure PyTorch is installed before running wizard
+        if not _ensure_pytorch_ready():
+            sys.exit(1)
+        
+        try:
+            params = run_interactive_mode(quiet=quiet, output_json=output_json)
+            
+            # Run the task with wizard parameters
+            _run_task_command(
+                ctx=ctx,
+                task=params["task"],
+                model=params["model"],
+                input_data=params["input_data"],
+                output_file=params["output_file"],
+                device=params["device"],
+                dtype=params["dtype"],
+                seed=params["seed"],
+                interactive=False,
+                verbose=verbose,
+                quiet=params.get("quiet", quiet),
+                output_json=params.get("output_json", output_json),
+                embed_metadata=embed_metadata,
+                open_output=open,
+            )
+        except click.Abort:
+            sys.exit(0)
+        return
+    
+    # Check if interactive mode should be auto-enabled via config/env
     if ctx.invoked_subcommand is None and task is None:
+        from hftool.io.interactive_mode import check_interactive_mode
+        
+        if check_interactive_mode(ctx, wizard):
+            # Recursively call with wizard enabled
+            ctx.invoke(main, wizard=True, quiet=quiet, output_json=output_json, 
+                      verbose=verbose, embed_metadata=embed_metadata, open=open)
+            return
+        
+        # Show help if not in interactive mode
         click.echo(ctx.get_help())
         return
     
-    # If subcommand is invoked, let it handle everything
+    # If subcommand is invoked (like 'models', 'download', etc.), let it handle everything
     if ctx.invoked_subcommand is not None:
         return
     
