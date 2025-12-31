@@ -309,10 +309,11 @@ def _get_input(inquirer, task: str) -> str:
         if input_method == "manual":
             file_path = inquirer.filepath(
                 message=f"Enter {config.input_type} file path:",
-                validate=lambda x: Path(x).exists(),
+                validate=lambda x: Path(os.path.expanduser(x)).exists(),
                 only_files=True,
             ).execute()
-            return file_path
+            # Expand ~ to home directory
+            return os.path.expanduser(file_path)
         else:
             # Use file picker
             picker = FilePicker(file_type=file_type)
@@ -381,10 +382,16 @@ def _get_output(inquirer, task: str) -> Optional[str]:
     if output_choice == "auto":
         return None
     
-    return inquirer.text(
+    output_path = inquirer.text(
         message=f"Output path (suggested: output{default_ext}):",
         default=f"output{default_ext}",
     ).execute()
+    
+    # Expand ~ to home directory
+    if output_path:
+        output_path = os.path.expanduser(output_path)
+    
+    return output_path
 
 
 def _select_device(inquirer, Choice) -> str:
