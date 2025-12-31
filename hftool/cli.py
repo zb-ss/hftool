@@ -1140,9 +1140,43 @@ def _run_task_command(
         from hftool.core.registry import get_task_config, TASK_ALIASES
         from hftool.core.models import get_default_model_info, get_model_info, find_model_by_repo_id
         from hftool.core.download import ensure_model_available, is_model_downloaded, get_model_path
+        from hftool.core.config import Config
         
         # Resolve task alias
         resolved_task = TASK_ALIASES.get(task, task)
+        
+        # Load configuration early
+        config = Config.get()
+        
+        # Apply config defaults if CLI args not provided
+        # Device: use config if still "auto"
+        if device == "auto":
+            device = config.get_value("device", task=resolved_task, default="auto")
+        
+        # Dtype: use config if None
+        if dtype is None:
+            dtype = config.get_value("dtype", task=resolved_task, default=None)
+        
+        # Model: use config if None
+        if model is None:
+            model = config.get_value("model", task=resolved_task, default=None)
+        
+        # Resolve model alias if model is set
+        if model:
+            model = config.resolve_model_alias(model)
+        
+        # Merge config task-specific params (lower priority than extra_kwargs)
+        # Get task-specific config section as dict
+        task_params = {}
+        if resolved_task in config._config:
+            task_config_section = config._config[resolved_task]
+            if isinstance(task_config_section, dict):
+                # Extract only parameter-like keys (not 'model', 'device', 'dtype')
+                reserved_keys = {'model', 'device', 'dtype'}
+                task_params = {k: v for k, v in task_config_section.items() if k not in reserved_keys}
+        
+        # Merge: config params < extra_kwargs (CLI has priority)
+        extra_kwargs = {**task_params, **extra_kwargs}
         
         # Get task configuration
         task_config = get_task_config(resolved_task)
@@ -1339,9 +1373,27 @@ def _open_file(file_path: str, verbose: bool = False) -> bool:
     """
     import platform
     import subprocess
+    from pathlib import Path
     
-    if not os.path.exists(file_path):
-        click.echo(f"Cannot open file: {file_path} (file not found)", err=True)
+    # Security: Validate file path (M-3)
+    try:
+        path = Path(file_path).resolve()
+        
+        # Check file exists
+        if not path.exists():
+            click.echo(f"Cannot open file: {file_path} (file not found)", err=True)
+            return False
+        
+        # Check it's a regular file (not a directory, symlink to dangerous location, etc.)
+        if not path.is_file():
+            click.echo(f"Cannot open file: {file_path} (not a regular file)", err=True)
+            return False
+        
+        # Use the validated absolute path
+        file_path = str(path)
+        
+    except Exception as e:
+        click.echo(f"Cannot open file: invalid path ({e})", err=True)
         return False
     
     system = platform.system().lower()

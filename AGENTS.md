@@ -8,6 +8,28 @@
 - Download model: `hftool download -t <task>` or `hftool download -m <model>`
 - Run tests: `pytest tests/` or `pytest tests/test_core.py::TestTaskRegistry::test_name`
 
+## New Features (v0.3.0+)
+
+### Configuration File
+- Config file: `~/.hftool/config.toml` or `./.hftool/config.toml`
+- View config: `hftool config show`
+- Create config: `hftool config init`
+- Edit config: `hftool config edit`
+- Priority: CLI args > env vars > project config > user config > defaults
+
+### Dry-Run Mode
+Preview operations without executing:
+```bash
+hftool -t t2i -i "prompt" -o output.png --dry-run
+```
+Shows: model info, device, VRAM estimate, parameters, dependencies
+
+### Better Error Messages
+Errors now include actionable suggestions:
+- CUDA OOM → suggests `--dtype float16`, smaller model
+- Missing deps → suggests `pip install` commands
+- Network errors → suggests `--offline` mode
+
 ## Supported Tasks
 - **text-to-image** (t2i): Z-Image, SDXL, FLUX - requires `[with_t2i]`
 - **image-to-image** (i2i): Qwen Image Edit, SDXL Refiner - requires `[with_t2i]`

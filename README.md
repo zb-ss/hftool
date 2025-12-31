@@ -152,6 +152,93 @@ Download this model now? [Y/n]:
 
 ---
 
+## Configuration File
+
+hftool supports persistent configuration via TOML files for convenience.
+
+### Creating a Config File
+
+```bash
+# Create default config with helpful comments
+hftool config init
+
+# Or manually create ~/.hftool/config.toml
+```
+
+### Config File Structure
+
+```toml
+# ~/.hftool/config.toml
+
+[defaults]
+device = "cuda"          # Device to use: auto, cuda, mps, cpu
+dtype = "bfloat16"       # Data type: bfloat16, float16, float32
+auto_open = true         # Auto-open output files
+verbose = false          # Verbose output
+
+[text-to-image]
+model = "z-image-turbo"  # Default model for this task
+num_inference_steps = 9
+guidance_scale = 0.0
+width = 1024
+height = 1024
+
+[text-to-speech]
+model = "bark-small"
+sample_rate = 24000
+
+[automatic-speech-recognition]
+model = "whisper-large-v3"
+return_timestamps = true
+
+[aliases]
+# Custom model aliases for convenience
+fast-image = "Tongyi-MAI/Z-Image-Turbo"
+quality-image = "black-forest-labs/FLUX.1-dev"
+my-whisper = "openai/whisper-large-v3"
+
+[paths]
+models_dir = "~/.hftool/models"
+output_dir = "~/ai-outputs"
+history_file = "~/.hftool/history.json"
+```
+
+### Config Priority
+
+Settings are applied in this order (highest to lowest):
+1. **CLI arguments** - `hftool -t t2i --device cuda`
+2. **Environment variables** - `HFTOOL_DEVICE=cuda`
+3. **Project config** - `./.hftool/config.toml` (current directory)
+4. **User config** - `~/.hftool/config.toml` (home directory)
+5. **Built-in defaults**
+
+### Config Commands
+
+```bash
+# View current configuration
+hftool config show
+
+# Create default config file
+hftool config init
+
+# Edit config in your $EDITOR
+hftool config edit
+```
+
+### Example Usage
+
+```bash
+# With config file setting device=cuda and model=z-image-turbo
+hftool -t t2i -i "A cat in space" -o cat.png
+# Uses cuda device and z-image-turbo from config
+
+# Override config with CLI args
+hftool -t t2i -i "A cat" -o cat.png --device cpu -m sdxl
+# Uses cpu device and sdxl model (CLI overrides config)
+```
+
+---
+
 ## Model Management
 
 ### List Available Models
