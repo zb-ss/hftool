@@ -18,6 +18,23 @@ from hftool.core.download import (
     download_model_with_progress,
     ensure_model_available,
 )
+from hftool.core.metadata import (
+    embed_metadata,
+    read_metadata,
+    create_metadata,
+)
+from hftool.core.benchmark import (
+    run_benchmark,
+    BenchmarkResult,
+    load_benchmarks,
+    save_benchmark,
+)
+from hftool.core.batch import (
+    process_batch,
+    load_batch_inputs,
+    load_batch_json,
+    BatchResult,
+)
 
 __all__ = [
     # Device
@@ -43,4 +60,18 @@ __all__ = [
     "download_model",
     "download_model_with_progress",
     "ensure_model_available",
+    # Metadata
+    "embed_metadata",
+    "read_metadata",
+    "create_metadata",
+    # Benchmark
+    "run_benchmark",
+    "BenchmarkResult",
+    "load_benchmarks",
+    "save_benchmark",
+    # Batch
+    "process_batch",
+    "load_batch_inputs",
+    "load_batch_json",
+    "BatchResult",
 ]

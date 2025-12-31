@@ -94,6 +94,75 @@ hftool -t t2i -i "A cat" --seed 42
 - Automatically applied to model generation
 - Shown in history and dry-run output
 
+### Phase 3 Features (Power User)
+
+#### Quiet/JSON Output Modes
+```bash
+hftool -t t2i -i "A cat" -o cat.png --quiet   # Only output file path
+hftool -t t2i -i "A cat" -o cat.png --json    # JSON output
+```
+- `--quiet` / `-q`: Minimal output for scripting
+- `--json`: Structured JSON output for automation
+- Exit codes: 0 = success, 1 = failure
+- Works with all tasks and commands
+
+#### Model Information
+```bash
+hftool info whisper-large-v3
+hftool info openai/whisper-large-v3 --json
+```
+- Show detailed model information
+- Display recommended settings from metadata
+- VRAM estimates for different resolutions
+- Download status and local path
+- HuggingFace URL and dependencies
+
+#### Metadata Embedding
+```bash
+hftool -t t2i -i "A cat" -o cat.png              # Default: enabled
+hftool -t t2i -i "A cat" -o cat.png --no-embed-metadata
+```
+- Embeds generation parameters in output files
+- **PNG**: PIL tEXt chunks (lossless)
+- **JPEG**: EXIF UserComment (requires `piexif`)
+- **Audio/Video**: Sidecar .json files
+- Stores: task, model, prompt, seed, steps, guidance, timestamp
+- Readable with exiftool and standard tools
+
+#### Benchmarking
+```bash
+hftool benchmark -t text-to-image -m z-image-turbo
+hftool benchmark --all                    # All downloaded models
+hftool benchmark --all --skip-large       # Skip models >15GB
+```
+- Measure load time, inference time, VRAM usage
+- Uses standardized test prompts
+- Results cached in `~/.hftool/benchmarks.json`
+- Supports `--json` output
+- Keeps last 100 results per model
+
+#### Batch Processing
+```bash
+hftool -t asr --batch ./audio_files/ --batch-output-dir ./transcripts/
+hftool -t t2i --batch inputs.txt --batch-output-dir ./outputs/
+hftool -t t2i --batch-json batch.json
+```
+- Process multiple inputs from file or directory
+- `--batch <source>`: File list or directory
+- `--batch-json <file>`: JSON array with per-entry params
+- `--batch-output-dir`: Output directory
+- Auto-generates numbered filenames
+- Shows progress, continues on error
+- Summary at end (success/failure counts)
+
+**Batch JSON format**:
+```json
+[
+  {"input": "A cat", "output": "cat.png", "params": {"seed": 42}},
+  {"input": "A dog", "output": "dog.png", "params": {"seed": 123}}
+]
+```
+
 ## Supported Tasks
 - **text-to-image** (t2i): Z-Image, SDXL, FLUX - requires `[with_t2i]`
 - **image-to-image** (i2i): Qwen Image Edit, SDXL Refiner - requires `[with_t2i]`
