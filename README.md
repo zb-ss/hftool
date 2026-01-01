@@ -6,6 +6,10 @@ A CLI for running HuggingFace models, optimized for AMD ROCm.
 >
 > **Who it's for:** AMD GPU owners frustrated with CUDA-first tooling, and anyone who wants a unified CLI for multiple AI modalities.
 
+## Demo
+
+[![Watch hftool interactive mode demo](https://img.youtube.com/vi/oYANVmglEhs/maxresdefault.jpg)](https://www.youtube.com/watch?v=oYANVmglEhs)
+
 ## Features
 
 ### AI Tasks
