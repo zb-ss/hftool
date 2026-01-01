@@ -99,6 +99,22 @@ with_vision_advanced = [
 # Model quantization (requires CUDA/ROCm)
 with_quantization = ["bitsandbytes>=0.39.0"]
 
+# Config file support (Python < 3.11)
+# Python 3.11+ has tomllib in stdlib, so only needed for 3.10
+with_config = [
+    "tomli>=2.0.1,<3.0; python_version < '3.11'",
+]
+
+# Interactive features (file picker, interactive prompts)
+with_interactive = [
+    "InquirerPy>=0.3.4,<1.0",
+]
+
+# REPL/Interactive mode with enhanced input
+with_repl = [
+    "prompt_toolkit>=3.0.0,<4.0",
+]
+
 # Development dependencies
 dev = [
     "pytest>=7.0.0",
@@ -124,6 +140,12 @@ all = [
     "scipy",
     # Vision advanced
     "opencv-python-headless>=4.5.0",
+    # Config file support (Python < 3.11)
+    "tomli>=2.0.1,<3.0; python_version < '3.11'",
+    # Interactive features
+    "InquirerPy>=0.3.4,<1.0",
+    # REPL mode
+    "prompt_toolkit>=3.0.0,<4.0",
 ]
 
 [project.scripts]

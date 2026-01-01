@@ -110,6 +110,15 @@ if "PYTORCH_CUDA_ALLOC_CONF" not in os.environ:
 
 import click
 
+# Import shell completion functions
+from hftool.core.completion import (
+    complete_tasks,
+    complete_models,
+    complete_devices,
+    complete_dtypes,
+    complete_input,
+)
+
 # Suppress known harmless warnings from dependencies
 # - PyTorch CUDA warning when using ROCm or CPU
 # - Deprecation warnings from diffusers internals
@@ -438,14 +447,24 @@ _EXTRA_ARGS_CACHE = _extract_extra_args()
 
 
 @click.group(invoke_without_command=True)
-@click.option("--task", "-t", default=None, help="Task to perform (e.g., text-to-image, tts, asr)")
-@click.option("--model", "-m", default=None, help="Model name or path (uses task default if not specified)")
-@click.option("--input", "-i", "input_data", default=None, help="Input data (text, file path, or URL)")
-@click.option("--output-file", "-o", default=None, help="Output file path")
-@click.option("--device", "-d", default="auto", help="Device to use (auto, cuda, mps, cpu)")
-@click.option("--dtype", default=None, help="Data type (bfloat16, float16, float32)")
+@click.option("--task", "-t", default=None, shell_complete=complete_tasks, help="Task to perform (e.g., text-to-image, tts, asr)")
+@click.option("--model", "-m", default=None, shell_complete=complete_models, help="Model name or path (uses task default if not specified)")
+@click.option("--input", "-i", "input_data", default=None, shell_complete=complete_input, help="Input data (text, file path, @ reference, @? for interactive, @*.ext for glob)")
+@click.option("--output-file", "-o", default=None, help="Output file path (auto-generated if omitted)")
+@click.option("--device", "-d", default="auto", shell_complete=complete_devices, help="Device to use (auto, cuda, mps, cpu)")
+@click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type (bfloat16, float16, float32)")
+@click.option("--seed", type=int, default=None, help="Random seed for reproducible generation")
+@click.option("--interactive", is_flag=True, help="Interactive mode for complex inputs (JSON builder)")
+@click.option("-I", "--interactive-wizard", "wizard", is_flag=True, help="Full interactive wizard (select task, model, input, etc.)")
+@click.option("--dry-run", is_flag=True, help="Preview operation without executing (shows model info, VRAM estimate, parameters)")
+@click.option("--batch", default=None, help="Batch mode: process multiple inputs from file or directory")
+@click.option("--batch-json", default=None, help="Batch mode: process inputs from JSON array file")
+@click.option("--batch-output-dir", default=None, help="Output directory for batch processing")
 @click.option("--open/--no-open", default=None, help="Open output file with default application (auto-detected by default)")
 @click.option("--list-tasks", is_flag=True, help="List all available tasks")
+@click.option("--quiet", "-q", is_flag=True, help="Quiet mode (only output file path)")
+@click.option("--json", "output_json", is_flag=True, help="Output result as JSON")
+@click.option("--embed-metadata/--no-embed-metadata", default=True, help="Embed generation metadata in output files (default: enabled)")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.pass_context
 def main(
@@ -456,8 +475,18 @@ def main(
     output_file: Optional[str],
     device: str,
     dtype: Optional[str],
+    seed: Optional[int],
+    interactive: bool,
+    wizard: bool,
+    dry_run: bool,
+    batch: Optional[str],
+    batch_json: Optional[str],
+    batch_output_dir: Optional[str],
     open: Optional[bool],
     list_tasks: bool,
+    quiet: bool,
+    output_json: bool,
+    embed_metadata: bool,
     verbose: bool,
 ):
     """hftool - Run Hugging Face models from the command line.
@@ -465,8 +494,36 @@ def main(
     \b
     QUICK START:
       hftool -t t2i -i "A cat in space" -o cat.png
-      hftool -t tts -i "Hello world" -o hello.wav
-      hftool -t asr -i recording.wav -o transcript.txt
+      hftool -t t2i -i @ -o cat.png              # Interactive file picker
+      hftool -t asr -i @*.wav -o transcript.txt  # Glob pattern
+    
+    \b
+    CONFIGURATION:
+      hftool config init                         # Create default config
+      hftool config show                         # View current config
+      hftool config edit                         # Edit in $EDITOR
+    
+    \b
+    PREVIEW & HISTORY:
+      hftool -t t2i -i "A cat" --dry-run         # Preview without running
+      hftool history                             # View command history
+      hftool history --rerun 5                   # Re-run command #5
+    
+    \b
+    FILE PICKER (@ syntax):
+      @           Interactive file picker
+      @?          Interactive with fuzzy search
+      @.          Pick from current directory
+      @~          Pick from home directory
+      @/path/     Pick from specific directory
+      @*.wav      Files matching glob pattern
+      @@          Recent files from history
+    
+    \b
+    INTERACTIVE MODE:
+      hftool -I                                  # Full interactive wizard
+      hftool --interactive-wizard                # Same as above
+      hftool -t i2i --interactive                # Guided JSON builder for input
     
     \b
     MANAGE MODELS:
@@ -480,19 +537,27 @@ def main(
       # Text-to-Image with Z-Image
       hftool -t text-to-image -i "A cat in space" -o cat.png
     
-      # Text-to-Video with HunyuanVideo
-      hftool -t text-to-video -i "A person walking" -o video.mp4
-    
-      # Speech-to-Text with Whisper
-      hftool -t asr -i recording.wav -o transcript.txt
+      # Interactive file selection
+      hftool -t t2i -i @ -o output.png
     
       # Pass extra arguments (after --)
       hftool -t t2i -i "A cat" -o cat.png -- --num_inference_steps 20
+      
+      # Reproducible generation with seed
+      hftool -t t2i -i "A cat" -o cat.png --seed 42
     """
     # Store options in context for subcommands
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["open"] = open
+    ctx.obj["seed"] = seed
+    ctx.obj["interactive"] = interactive
+    ctx.obj["quiet"] = quiet
+    ctx.obj["output_json"] = output_json
+    ctx.obj["embed_metadata"] = embed_metadata
+    ctx.obj["batch"] = batch
+    ctx.obj["batch_json"] = batch_json
+    ctx.obj["batch_output_dir"] = batch_output_dir
     ctx.obj["extra_args"] = tuple(_EXTRA_ARGS_CACHE)
     
     # Handle --list-tasks
@@ -500,19 +565,61 @@ def main(
         _list_tasks()
         return
     
-    # If no subcommand and no task, show help
+    # Handle --interactive-wizard / -I (full wizard mode)
+    if wizard:
+        from hftool.io.interactive_mode import run_interactive_mode, check_interactive_mode
+        
+        # Ensure PyTorch is installed before running wizard
+        if not _ensure_pytorch_ready():
+            sys.exit(1)
+        
+        try:
+            params = run_interactive_mode(quiet=quiet, output_json=output_json)
+            
+            # Run the task with wizard parameters
+            _run_task_command(
+                ctx=ctx,
+                task=params["task"],
+                model=params["model"],
+                input_data=params["input_data"],
+                output_file=params["output_file"],
+                device=params["device"],
+                dtype=params["dtype"],
+                seed=params["seed"],
+                interactive=False,
+                verbose=verbose,
+                quiet=params.get("quiet", quiet),
+                output_json=params.get("output_json", output_json),
+                embed_metadata=embed_metadata,
+                open_output=open,
+            )
+        except click.Abort:
+            sys.exit(0)
+        return
+    
+    # Check if interactive mode should be auto-enabled via config/env
     if ctx.invoked_subcommand is None and task is None:
+        from hftool.io.interactive_mode import check_interactive_mode
+        
+        if check_interactive_mode(ctx, wizard):
+            # Recursively call with wizard enabled
+            ctx.invoke(main, wizard=True, quiet=quiet, output_json=output_json, 
+                      verbose=verbose, embed_metadata=embed_metadata, open=open)
+            return
+        
+        # Show help if not in interactive mode
         click.echo(ctx.get_help())
         return
     
-    # If subcommand is invoked, let it handle everything
+    # If subcommand is invoked (like 'models', 'download', etc.), let it handle everything
     if ctx.invoked_subcommand is not None:
         return
     
     # Run task (legacy behavior for -t flag)
     if task is not None:
-        if input_data is None:
-            click.echo("Error: Missing option '--input' / '-i'.", err=True)
+        # Handle interactive mode or missing input
+        if input_data is None and not interactive:
+            click.echo("Error: Missing option '--input' / '-i' (or use --interactive).", err=True)
             sys.exit(1)
         
         # Ensure PyTorch is installed before running tasks
@@ -527,7 +634,12 @@ def main(
             output_file=output_file,
             device=device,
             dtype=dtype,
+            seed=seed,
+            interactive=interactive,
             verbose=verbose,
+            quiet=quiet,
+            output_json=output_json,
+            embed_metadata=embed_metadata,
             open_output=open,
         )
 
@@ -563,22 +675,26 @@ def setup_command(ctx: click.Context):
 # =============================================================================
 
 @main.command("run")
-@click.option("--task", "-t", required=True, help="Task to perform")
-@click.option("--model", "-m", default=None, help="Model name or path")
-@click.option("--input", "-i", "input_data", required=True, help="Input data")
+@click.option("--task", "-t", required=True, shell_complete=complete_tasks, help="Task to perform")
+@click.option("--model", "-m", default=None, shell_complete=complete_models, help="Model name or path")
+@click.option("--input", "-i", "input_data", default=None, shell_complete=complete_input, help="Input data (@ references or @? for interactive)")
 @click.option("--output-file", "-o", default=None, help="Output file path")
-@click.option("--device", "-d", default="auto", help="Device to use")
-@click.option("--dtype", default=None, help="Data type")
+@click.option("--device", "-d", default="auto", shell_complete=complete_devices, help="Device to use")
+@click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type")
+@click.option("--seed", type=int, default=None, help="Random seed for reproducibility")
+@click.option("--interactive", is_flag=True, help="Interactive JSON builder mode")
 @click.option("--open/--no-open", default=None, help="Open output file with default application")
 @click.pass_context
 def run_command(
     ctx: click.Context,
     task: str,
     model: Optional[str],
-    input_data: str,
+    input_data: Optional[str],
     output_file: Optional[str],
     device: str,
     dtype: Optional[str],
+    seed: Optional[int],
+    interactive: bool,
     open: Optional[bool],
 ):
     """Run a task with the specified model."""
@@ -589,7 +705,135 @@ def run_command(
     verbose = ctx.obj.get("verbose", False)
     # Use command-level --open if specified, otherwise use global
     open_output = open if open is not None else ctx.obj.get("open")
-    _run_task_command(ctx, task, model, input_data, output_file, device, dtype, verbose, open_output)
+    # Use command-level --seed if specified, otherwise use global
+    final_seed = seed if seed is not None else ctx.obj.get("seed")
+    # Use command-level --interactive if specified, otherwise use global
+    final_interactive = interactive or ctx.obj.get("interactive", False)
+    
+    _run_task_command(ctx, task, model, input_data, output_file, device, dtype, final_seed, final_interactive, verbose, open_output)
+
+
+# =============================================================================
+# HISTORY COMMAND
+# =============================================================================
+
+@main.command("history")
+@click.option("--clear", is_flag=True, help="Clear all history")
+@click.option("--rerun", type=int, metavar="ID", help="Re-run command from history")
+@click.option("--limit", "-n", type=int, default=10, help="Number of entries to show")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def history_command(
+    ctx: click.Context,
+    clear: bool,
+    rerun: Optional[int],
+    limit: int,
+    as_json: bool,
+):
+    """View and manage command history.
+    
+    \b
+    Examples:
+        hftool history                 # Show recent history
+        hftool history -n 20           # Show last 20 commands
+        hftool history --rerun 42      # Re-run command #42
+        hftool history --clear         # Clear all history
+    """
+    from hftool.core.history import History
+    
+    history = History.get()
+    
+    # Clear history
+    if clear:
+        if click.confirm("Clear all command history?"):
+            history.clear()
+            click.echo("History cleared.")
+        return
+    
+    # Re-run command
+    if rerun is not None:
+        entry = history.get_by_id(rerun)
+        if entry is None:
+            click.echo(f"Error: No history entry with ID {rerun}", err=True)
+            sys.exit(1)
+        
+        click.echo(f"Re-running command #{entry.id} from {entry.get_timestamp_str()}:")
+        click.echo(f"  {entry.to_command()}")
+        click.echo("")
+        
+        if not click.confirm("Continue?", default=True):
+            return
+        
+        # Extract parameters and re-run
+        _run_task_command(
+            ctx=ctx,
+            task=entry.task,
+            model=entry.model,
+            input_data=entry.input_data,
+            output_file=entry.output_file,
+            device=entry.device,
+            dtype=entry.dtype,
+            seed=entry.seed,
+            interactive=False,
+            verbose=ctx.obj.get("verbose", False),
+            open_output=ctx.obj.get("open"),
+        )
+        return
+    
+    # Show history
+    entries = history.get_recent(limit=limit)
+    
+    if not entries:
+        click.echo("No command history yet.")
+        return
+    
+    if as_json:
+        import json
+        from dataclasses import asdict
+        output = [asdict(entry) for entry in entries]
+        click.echo(json.dumps(output, indent=2))
+        return
+    
+    # Text output
+    click.echo("")
+    click.echo("Recent command history:")
+    click.echo("=" * 80)
+    
+    for entry in entries:
+        # Status indicator
+        status = click.style("✓", fg="green") if entry.success else click.style("✗", fg="red")
+        
+        # Header
+        click.echo(f"\n[{entry.id}] {status} {entry.get_timestamp_str()} - {entry.task}")
+        
+        # Details
+        if entry.model:
+            click.echo(f"    Model: {entry.model}")
+        
+        # Show input (truncate if too long)
+        input_display = entry.input_data
+        if len(input_display) > 60:
+            input_display = input_display[:57] + "..."
+        click.echo(f"    Input: {input_display}")
+        
+        if entry.output_file:
+            click.echo(f"    Output: {entry.output_file}")
+        
+        if entry.seed is not None:
+            click.echo(f"    Seed: {entry.seed}")
+        
+        if not entry.success and entry.error_message:
+            error_display = entry.error_message
+            if len(error_display) > 60:
+                error_display = error_display[:57] + "..."
+            click.echo(click.style(f"    Error: {error_display}", fg="red"))
+        
+        # Show command for reproduction
+        click.echo(click.style(f"    Rerun: hftool history --rerun {entry.id}", fg="cyan"))
+    
+    click.echo("")
+    click.echo("=" * 80)
+    click.echo(f"Showing {len(entries)} most recent commands")
 
 
 # =============================================================================
@@ -597,7 +841,7 @@ def run_command(
 # =============================================================================
 
 @main.command("models")
-@click.option("--task", "-t", default=None, help="Filter by task (e.g., t2i, tts)")
+@click.option("--task", "-t", default=None, shell_complete=complete_tasks, help="Filter by task (e.g., t2i, tts)")
 @click.option("--downloaded", "-d", is_flag=True, help="Show only downloaded models")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
@@ -701,10 +945,11 @@ def models_command(
 # =============================================================================
 
 @main.command("download")
-@click.option("--task", "-t", default=None, help="Download default model for task")
-@click.option("--model", "-m", default=None, help="Specific model to download (short name or repo_id)")
+@click.option("--task", "-t", default=None, shell_complete=complete_tasks, help="Download default model for task")
+@click.option("--model", "-m", default=None, shell_complete=complete_models, help="Specific model to download (short name or repo_id)")
 @click.option("--all", "download_all", is_flag=True, help="Download default models for all tasks")
 @click.option("--force", "-f", is_flag=True, help="Re-download even if already exists")
+@click.option("--resume/--no-resume", default=True, help="Resume partial downloads (default: enabled)")
 @click.pass_context
 def download_command(
     ctx: click.Context,
@@ -712,6 +957,7 @@ def download_command(
     model: Optional[str],
     download_all: bool,
     force: bool,
+    resume: bool,
 ):
     """Download models from HuggingFace Hub.
     
@@ -752,6 +998,7 @@ def download_command(
                     repo_id=info.repo_id,
                     size_gb=info.size_gb,
                     force=force,
+                    resume=resume,
                     pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
                 )
                 click.echo("")
@@ -788,6 +1035,7 @@ def download_command(
             repo_id=info.repo_id,
             size_gb=info.size_gb,
             force=force,
+            resume=resume,
             pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
         )
         return
@@ -806,6 +1054,7 @@ def download_command(
             repo_id=info.repo_id,
             size_gb=info.size_gb,
             force=force,
+            resume=resume,
             pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
         )
         return
@@ -833,14 +1082,26 @@ def status_command(ctx: click.Context):
     Displays information about:
     - Models directory location
     - Downloaded models and their sizes
+    - Partial downloads (resumable)
     - Total disk usage
     """
-    from hftool.core.download import get_models_dir, get_models_disk_usage, list_downloaded_models
+    from hftool.core.download import get_models_dir, get_models_disk_usage, list_downloaded_models, get_partial_downloads
     from hftool.core.models import find_model_by_repo_id
     
     models_dir = get_models_dir()
     click.echo(f"Models directory: {models_dir}")
     click.echo("")
+    
+    # Check for partial downloads
+    partial_downloads = get_partial_downloads()
+    if partial_downloads:
+        click.echo(click.style("Partial downloads (resumable):", fg="yellow"))
+        click.echo("-" * 60)
+        for partial in partial_downloads:
+            repo_id = partial["repo_id"]
+            click.echo(f"  {repo_id}")
+            click.echo(f"    Resume: hftool download -m {repo_id}")
+        click.echo("")
     
     usage = get_models_disk_usage()
     
@@ -874,6 +1135,454 @@ def status_command(ctx: click.Context):
     
     click.echo("-" * 60)
     click.echo(f"Total disk usage: {usage['total_str']}")
+
+
+# =============================================================================
+# INFO COMMAND
+# =============================================================================
+
+@main.command("info")
+@click.argument("model_name")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def info_command(ctx: click.Context, model_name: str, as_json: bool):
+    """Show detailed information about a model.
+    
+    MODEL_NAME can be a short name (e.g., 'whisper-large-v3'), 
+    full repo ID (e.g., 'openai/whisper-large-v3'), or any model identifier.
+    
+    \b
+    Examples:
+      hftool info whisper-large-v3
+      hftool info openai/whisper-large-v3
+      hftool info z-image-turbo
+      hftool info stabilityai/stable-diffusion-xl-base-1.0
+    """
+    from hftool.core.models import find_model_by_repo_id, MODEL_REGISTRY
+    from hftool.core.download import get_download_status, get_models_dir, get_model_path
+    import json as json_module
+    
+    # Try to find the model
+    found = find_model_by_repo_id(model_name)
+    
+    if not found:
+        # Try to find by short name across all tasks
+        found_by_short = None
+        for task_name, models in MODEL_REGISTRY.items():
+            if model_name in models:
+                info = models[model_name]
+                found_by_short = (task_name, model_name, info)
+                break
+        
+        if found_by_short:
+            found = found_by_short
+        else:
+            click.echo(f"Error: Model '{model_name}' not found.", err=True)
+            click.echo("", err=True)
+            click.echo("Use 'hftool models' to see available models.", err=True)
+            sys.exit(1)
+    
+    task_name, short_name, info = found
+    
+    # Get download status
+    status = get_download_status(info.repo_id)
+    is_downloaded = status == "downloaded"
+    
+    # Get local path if downloaded
+    local_path = None
+    if is_downloaded:
+        local_path = str(get_model_path(info.repo_id))
+    
+    # Estimate VRAM for different resolutions (for image/video models)
+    vram_estimates = {}
+    if task_name in ("text-to-image", "image-to-image"):
+        # Rough VRAM estimates for image generation
+        # Base VRAM is model size + overhead
+        base_vram = info.size_gb * 1.2  # 20% overhead for pipeline
+        vram_estimates = {
+            "512x512": f"{base_vram + 2:.1f} GB",
+            "1024x1024": f"{base_vram + 4:.1f} GB",
+            "2048x2048": f"{base_vram + 12:.1f} GB",
+        }
+    elif task_name in ("text-to-video", "image-to-video"):
+        base_vram = info.size_gb * 1.2
+        vram_estimates = {
+            "480p (24 frames)": f"{base_vram + 6:.1f} GB",
+            "720p (24 frames)": f"{base_vram + 12:.1f} GB",
+            "1080p (24 frames)": f"{base_vram + 24:.1f} GB",
+        }
+    
+    # Get recommended settings from metadata
+    recommended_settings = info.metadata.copy() if info.metadata else {}
+    
+    # Generate HuggingFace URL
+    hf_url = f"https://huggingface.co/{info.repo_id}"
+    
+    if as_json:
+        # JSON output
+        output = {
+            "name": info.name,
+            "short_name": short_name,
+            "repo_id": info.repo_id,
+            "task": task_name,
+            "type": info.model_type.value,
+            "size_gb": info.size_gb,
+            "size_str": info.size_str,
+            "is_default": info.is_default,
+            "description": info.description,
+            "status": status,
+            "is_downloaded": is_downloaded,
+            "local_path": local_path,
+            "recommended_settings": recommended_settings,
+            "vram_estimates": vram_estimates,
+            "huggingface_url": hf_url,
+        }
+        
+        if info.pip_dependencies:
+            output["pip_dependencies"] = info.pip_dependencies
+        
+        click.echo(json_module.dumps(output, indent=2))
+    else:
+        # Text output
+        click.echo("")
+        click.echo(click.style(info.name, fg="cyan", bold=True))
+        click.echo("=" * 60)
+        click.echo("")
+        
+        click.echo(click.style("Basic Information", bold=True))
+        click.echo(f"  Repository:     {info.repo_id}")
+        click.echo(f"  Short Name:     {short_name}")
+        click.echo(f"  Task:           {task_name}")
+        click.echo(f"  Type:           {info.model_type.value}")
+        click.echo(f"  Size:           {info.size_str}")
+        click.echo(f"  Default:        {'Yes' if info.is_default else 'No'}")
+        
+        if info.description:
+            click.echo(f"  Description:    {info.description}")
+        
+        click.echo("")
+        
+        # Download status
+        click.echo(click.style("Download Status", bold=True))
+        if is_downloaded:
+            click.echo(click.style(f"  Status:         ✓ Downloaded", fg="green"))
+            click.echo(f"  Location:       {local_path}")
+        else:
+            click.echo(click.style(f"  Status:         Not downloaded", fg="yellow"))
+            click.echo(f"  To download:    hftool download -m {short_name}")
+        
+        click.echo("")
+        
+        # Recommended settings
+        if recommended_settings:
+            click.echo(click.style("Recommended Settings", bold=True))
+            for key, value in recommended_settings.items():
+                # Format key nicely
+                display_key = key.replace("_", " ").title()
+                click.echo(f"  {display_key + ':':<20} {value}")
+            click.echo("")
+        
+        # VRAM estimates
+        if vram_estimates:
+            click.echo(click.style("VRAM Estimates", bold=True))
+            for resolution, vram in vram_estimates.items():
+                click.echo(f"  {resolution + ':':<20} {vram}")
+            click.echo("")
+        
+        # Dependencies
+        if info.pip_dependencies:
+            click.echo(click.style("Dependencies", bold=True))
+            for dep in info.pip_dependencies:
+                click.echo(f"  - {dep}")
+            click.echo("")
+        
+        # Links
+        click.echo(click.style("Links", bold=True))
+        click.echo(f"  HuggingFace:    {hf_url}")
+        click.echo("")
+
+
+# =============================================================================
+# BENCHMARK COMMAND
+# =============================================================================
+
+@main.command("benchmark")
+@click.option("--task", "-t", required=False, shell_complete=complete_tasks, help="Task to benchmark")
+@click.option("--model", "-m", required=False, shell_complete=complete_models, help="Model to benchmark")
+@click.option("--all", "benchmark_all", is_flag=True, help="Benchmark all downloaded models")
+@click.option("--device", "-d", default="auto", shell_complete=complete_devices, help="Device to use")
+@click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type")
+@click.option("--skip-large", is_flag=True, help="Skip models larger than 15GB")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def benchmark_command(
+    ctx: click.Context,
+    task: Optional[str],
+    model: Optional[str],
+    benchmark_all: bool,
+    device: str,
+    dtype: Optional[str],
+    skip_large: bool,
+    as_json: bool,
+):
+    """Benchmark model performance (load time, inference time, VRAM).
+    
+    \b
+    Examples:
+      hftool benchmark -t text-to-image -m z-image-turbo
+      hftool benchmark -t asr -m whisper-large-v3
+      hftool benchmark --all                    # Benchmark all downloaded models
+      hftool benchmark --all --skip-large       # Skip models >15GB
+    
+    Results are cached in ~/.hftool/benchmarks.json for reference.
+    """
+    from hftool.core.benchmark import run_benchmark, save_benchmark, load_benchmarks, get_benchmarks_file
+    from hftool.core.models import MODEL_REGISTRY, get_default_model_info
+    from hftool.core.download import get_download_status
+    import json as json_module
+    
+    verbose = ctx.obj.get("verbose", False) and not as_json
+    
+    if benchmark_all:
+        # Benchmark all downloaded models
+        click.echo("Benchmarking all downloaded models...")
+        click.echo("")
+        
+        results = []
+        for task_name, models in MODEL_REGISTRY.items():
+            for short_name, info in models.items():
+                status = get_download_status(info.repo_id)
+                
+                if status != "downloaded":
+                    continue
+                
+                if skip_large and info.size_gb > 15:
+                    if verbose:
+                        click.echo(f"Skipping {info.name} ({info.size_str}) - too large")
+                    continue
+                
+                click.echo(f"Benchmarking {info.name} ({task_name})...")
+                
+                result = run_benchmark(
+                    task=task_name,
+                    model=short_name,
+                    device=device,
+                    dtype=dtype,
+                    verbose=verbose,
+                )
+                
+                save_benchmark(result)
+                results.append(result)
+                click.echo("")
+        
+        if as_json:
+            output = [
+                {
+                    "task": r.task,
+                    "model": r.model,
+                    "repo_id": r.repo_id,
+                    "load_time": r.load_time,
+                    "inference_time": r.inference_time,
+                    "total_time": r.total_time,
+                    "vram_peak": r.vram_peak,
+                    "vram_allocated": r.vram_allocated,
+                    "success": r.success,
+                    "error": r.error,
+                }
+                for r in results
+            ]
+            click.echo(json_module.dumps(output, indent=2))
+        else:
+            click.echo("=" * 60)
+            click.echo(f"Benchmarked {len(results)} models")
+            click.echo(f"Results saved to: {get_benchmarks_file()}")
+        
+        return
+    
+    if not task or not model:
+        click.echo("Error: Must specify --task and --model, or use --all", err=True)
+        click.echo("", err=True)
+        click.echo("Examples:", err=True)
+        click.echo("  hftool benchmark -t text-to-image -m z-image-turbo", err=True)
+        click.echo("  hftool benchmark --all", err=True)
+        sys.exit(1)
+    
+    # Benchmark specific model
+    result = run_benchmark(
+        task=task,
+        model=model,
+        device=device,
+        dtype=dtype,
+        verbose=verbose,
+    )
+    
+    # Save result
+    save_benchmark(result)
+    
+    # Output result
+    if as_json:
+        output = {
+            "task": result.task,
+            "model": result.model,
+            "repo_id": result.repo_id,
+            "timestamp": result.timestamp,
+            "device": result.device,
+            "dtype": result.dtype,
+            "load_time": result.load_time,
+            "inference_time": result.inference_time,
+            "total_time": result.total_time,
+            "vram_peak": result.vram_peak,
+            "vram_allocated": result.vram_allocated,
+            "test_prompt": result.test_prompt,
+            "test_params": result.test_params,
+            "success": result.success,
+            "error": result.error,
+        }
+        click.echo(json_module.dumps(output, indent=2))
+    else:
+        click.echo("")
+        click.echo("=" * 60)
+        click.echo("Benchmark Results")
+        click.echo("=" * 60)
+        click.echo(f"Task:            {result.task}")
+        click.echo(f"Model:           {result.model}")
+        click.echo(f"Device:          {result.device}")
+        
+        if result.success:
+            click.echo(click.style(f"Status:          ✓ Success", fg="green"))
+            click.echo("")
+            click.echo(f"Load time:       {result.load_time:.2f}s")
+            click.echo(f"Inference time:  {result.inference_time:.2f}s")
+            click.echo(f"Total time:      {result.total_time:.2f}s")
+            
+            if result.vram_peak:
+                click.echo("")
+                click.echo(f"VRAM peak:       {result.vram_peak:.2f} GB")
+                click.echo(f"VRAM allocated:  {result.vram_allocated:.2f} GB")
+        else:
+            click.echo(click.style(f"Status:          ✗ Failed", fg="red"))
+            click.echo(f"Error:           {result.error}")
+        
+        click.echo("")
+        click.echo(f"Results saved to: {get_benchmarks_file()}")
+
+
+# =============================================================================
+# COMPLETION COMMAND
+# =============================================================================
+
+@main.command("completion")
+@click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]), required=False)
+@click.option("--install", is_flag=True, help="Install completion for current shell")
+@click.pass_context
+def completion_command(ctx: click.Context, shell: Optional[str], install: bool):
+    """Show or install shell completion scripts.
+    
+    \b
+    Examples:
+      hftool completion bash               # Show bash completion script
+      hftool completion zsh                # Show zsh completion script
+      hftool completion fish               # Show fish completion script
+      hftool completion --install          # Auto-detect and install
+      hftool completion bash --install     # Install bash completion
+    
+    \b
+    After installation, restart your shell or run:
+      source ~/.bashrc    # for bash
+      source ~/.zshrc     # for zsh
+      # fish completion loads automatically
+    """
+    from hftool.core.completion import (
+        get_shell_name, 
+        get_completion_script, 
+        install_completion
+    )
+    
+    # Auto-detect shell if not specified
+    if shell is None:
+        shell = get_shell_name()
+        if shell is None:
+            click.echo("Error: Could not detect shell. Please specify: bash, zsh, or fish", err=True)
+            sys.exit(1)
+    
+    # Install completion
+    if install:
+        try:
+            if install_completion(shell):
+                click.echo(f"Completion installed for {shell}")
+                click.echo("")
+                click.echo("Restart your shell or run:")
+                if shell == "bash":
+                    click.echo("  source ~/.bashrc")
+                elif shell == "zsh":
+                    click.echo("  source ~/.zshrc")
+                elif shell == "fish":
+                    click.echo("  # fish completion loads automatically")
+            else:
+                click.echo(f"Completion already installed for {shell}")
+        except Exception as e:
+            click.echo(f"Error installing completion: {e}", err=True)
+            sys.exit(1)
+        return
+    
+    # Show completion script
+    try:
+        script = get_completion_script(shell)
+        click.echo(script)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+# =============================================================================
+# DOCTOR COMMAND
+# =============================================================================
+
+@main.command("doctor")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def doctor_command(ctx: click.Context, as_json: bool):
+    """Run system diagnostics and check hftool health.
+    
+    \b
+    Checks:
+      - Python version
+      - PyTorch installation
+      - GPU availability
+      - ffmpeg (required for video/audio)
+      - Network connectivity
+      - Optional features
+      - Configuration files
+    
+    \b
+    Examples:
+      hftool doctor              # Run all checks
+      hftool doctor --json       # Output as JSON
+    
+    \b
+    Exit codes:
+      0 = All checks passed
+      1 = Warnings found
+      2 = Errors found
+    """
+    from hftool.core.doctor import run_doctor_checks, format_doctor_report
+    import json as json_module
+    
+    # Run all checks
+    report = run_doctor_checks()
+    
+    # Output results
+    if as_json:
+        output = report.to_dict()
+        click.echo(json_module.dumps(output, indent=2))
+    else:
+        output = format_doctor_report(report, use_color=True)
+        if output:  # Plain text fallback
+            click.echo(output)
+        # Otherwise rich already printed to console
+    
+    # Exit with appropriate code
+    sys.exit(report.get_exit_code())
 
 
 # =============================================================================
@@ -1114,19 +1823,36 @@ def _run_task_command(
     ctx: click.Context,
     task: str,
     model: Optional[str],
-    input_data: str,
+    input_data: Optional[str],
     output_file: Optional[str],
     device: str,
     dtype: Optional[str],
+    seed: Optional[int],
+    interactive: bool,
     verbose: bool,
+    quiet: bool = False,
+    output_json: bool = False,
+    embed_metadata: bool = True,
     open_output: Optional[bool] = None,
 ):
     """Execute a task (internal helper)."""
+    import random
+    import json as json_module
+    
     # Parse extra arguments (after --)
     extra_args = ctx.obj.get("extra_args", ()) if ctx.obj else ()
     extra_kwargs = _parse_extra_args(list(extra_args))
     
-    if verbose:
+    # Generate random seed if not provided
+    if seed is None:
+        seed = random.randint(0, 2**32 - 1)
+    
+    # Add seed to extra_kwargs (will be passed to model if supported)
+    if "generator_seed" not in extra_kwargs and "seed" not in extra_kwargs:
+        extra_kwargs["seed"] = seed
+    
+    # Quiet and JSON modes suppress verbose output
+    if verbose and not quiet and not output_json:
         click.echo(f"Task: {task}")
         click.echo(f"Model: {model or '(default)'}")
         click.echo(f"Input: {input_data}")
@@ -1140,9 +1866,224 @@ def _run_task_command(
         from hftool.core.registry import get_task_config, TASK_ALIASES
         from hftool.core.models import get_default_model_info, get_model_info, find_model_by_repo_id
         from hftool.core.download import ensure_model_available, is_model_downloaded, get_model_path
+        from hftool.core.config import Config
         
         # Resolve task alias
         resolved_task = TASK_ALIASES.get(task, task)
+        
+        # Handle batch mode
+        batch_source = ctx.obj.get("batch") if ctx.obj else None
+        batch_json_file = ctx.obj.get("batch_json") if ctx.obj else None
+        batch_output_dir = ctx.obj.get("batch_output_dir") if ctx.obj else None
+        
+        if batch_source or batch_json_file:
+            from hftool.core.batch import load_batch_inputs, load_batch_json, process_batch
+            
+            if not quiet and not output_json:
+                click.echo("Running in batch mode...")
+                click.echo("")
+            
+            # Load inputs
+            if batch_json_file:
+                # Load from JSON file
+                batch_entries = load_batch_json(batch_json_file)
+                
+                # For JSON batch, we don't use the simple file list processing
+                # Instead, each entry can have its own params
+                if not quiet and not output_json:
+                    click.echo(f"Loaded {len(batch_entries)} entries from JSON batch file")
+                    click.echo("")
+                
+                # Process each entry with its own params
+                results = []
+                success_count = 0
+                failure_count = 0
+                
+                for i, entry in enumerate(batch_entries):
+                    entry_input = entry["input"]
+                    entry_output = entry.get("output")
+                    entry_params = entry.get("params", {})
+                    
+                    # Merge params (entry params override command-line params)
+                    merged_kwargs = {**extra_kwargs, **entry_params}
+                    
+                    if not quiet and not output_json:
+                        click.echo(f"[{i+1}/{len(batch_entries)}] Processing: {entry_input}")
+                    
+                    # Run single task
+                    try:
+                        _run_task_command(
+                            ctx=ctx,
+                            task=task,
+                            model=model,
+                            input_data=entry_input,
+                            output_file=entry_output,
+                            device=device,
+                            dtype=dtype,
+                            seed=seed,
+                            interactive=False,
+                            verbose=False,  # Suppress verbose for batch
+                            quiet=True,  # Suppress output
+                            output_json=False,
+                            embed_metadata=embed_metadata,
+                            open_output=False,  # Don't open files in batch
+                        )
+                        success_count += 1
+                        if not quiet and not output_json:
+                            click.echo(f"  ✓ Success")
+                    except Exception as e:
+                        failure_count += 1
+                        if not quiet and not output_json:
+                            click.echo(click.style(f"  ✗ Failed: {e}", fg="red"), err=True)
+                
+                # Print summary
+                if not quiet and not output_json:
+                    click.echo("")
+                    click.echo("=" * 60)
+                    click.echo(f"Batch processing complete: {success_count} succeeded, {failure_count} failed")
+                elif output_json:
+                    result_data = {
+                        "success": True,
+                        "batch_mode": "json",
+                        "total": len(batch_entries),
+                        "succeeded": success_count,
+                        "failed": failure_count,
+                    }
+                    click.echo(json_module.dumps(result_data, indent=2))
+                
+                return
+            
+            else:
+                # Load from file/directory
+                inputs = load_batch_inputs(batch_source)
+                
+                if not inputs:
+                    click.echo(f"No inputs found in: {batch_source}", err=True)
+                    sys.exit(1)
+                
+                if not quiet and not output_json:
+                    click.echo(f"Loaded {len(inputs)} inputs")
+                    click.echo("")
+                
+                # Determine output extension based on task
+                task_config = get_task_config(resolved_task)
+                output_ext_map = {
+                    "image": ".png",
+                    "audio": ".wav",
+                    "video": ".mp4",
+                    "text": ".txt",
+                }
+                output_extension = output_ext_map.get(task_config.output_type, ".out")
+                
+                # Process batch
+                results, success_count, failure_count = process_batch(
+                    task=task,
+                    inputs=inputs,
+                    model=model,
+                    device=device,
+                    dtype=dtype,
+                    output_dir=batch_output_dir,
+                    output_extension=output_extension,
+                    extra_kwargs=extra_kwargs,
+                    verbose=not quiet and not output_json,
+                )
+                
+                # Print summary
+                if not quiet and not output_json:
+                    click.echo("")
+                    click.echo("=" * 60)
+                    click.echo(f"Batch processing complete: {success_count} succeeded, {failure_count} failed")
+                elif output_json:
+                    result_data = {
+                        "success": True,
+                        "batch_mode": "file",
+                        "total": len(inputs),
+                        "succeeded": success_count,
+                        "failed": failure_count,
+                        "results": [
+                            {
+                                "input": r.input_file,
+                                "output": r.output_file,
+                                "success": r.success,
+                                "error": r.error,
+                                "execution_time": r.execution_time,
+                            }
+                            for r in results
+                        ],
+                    }
+                    click.echo(json_module.dumps(result_data, indent=2))
+                
+                return
+        
+        # Load configuration early
+        config = Config.get()
+        
+        # Apply config defaults if CLI args not provided
+        # Device: use config if still "auto"
+        if device == "auto":
+            device = config.get_value("device", task=resolved_task, default="auto")
+        
+        # Dtype: use config if None
+        if dtype is None:
+            dtype = config.get_value("dtype", task=resolved_task, default=None)
+        
+        # Model: use config if None
+        if model is None:
+            model = config.get_value("model", task=resolved_task, default=None)
+        
+        # Resolve model alias if model is set
+        if model:
+            model = config.resolve_model_alias(model)
+        
+        # Merge config task-specific params (lower priority than extra_kwargs)
+        # Get task-specific config section as dict
+        task_params = {}
+        if resolved_task in config._config:
+            task_config_section = config._config[resolved_task]
+            if isinstance(task_config_section, dict):
+                # Extract only parameter-like keys (not 'model', 'device', 'dtype')
+                reserved_keys = {'model', 'device', 'dtype'}
+                task_params = {k: v for k, v in task_config_section.items() if k not in reserved_keys}
+        
+        # Merge: config params < extra_kwargs (CLI has priority)
+        extra_kwargs = {**task_params, **extra_kwargs}
+        
+        # Handle interactive mode and file references
+        if interactive or (input_data and input_data == "@?"):
+            # Interactive JSON builder
+            try:
+                from hftool.io.interactive_input import build_interactive_input
+                input_data = build_interactive_input(resolved_task)
+            except ValueError as e:
+                click.echo(f"Error: {e}", err=True)
+                sys.exit(1)
+        elif input_data and input_data.startswith("@"):
+            # Resolve @ file reference
+            try:
+                from hftool.io.file_picker import resolve_file_reference
+                input_data = resolve_file_reference(input_data, task=resolved_task)
+                if verbose:
+                    click.echo(f"Resolved file reference to: {input_data}")
+            except ValueError as e:
+                click.echo(f"Error resolving file reference: {e}", err=True)
+                sys.exit(1)
+        elif input_data is None and interactive:
+            # Interactive mode but no schema available - build basic JSON
+            try:
+                from hftool.io.interactive_input import build_interactive_input
+                input_data = build_interactive_input(resolved_task)
+            except ValueError as e:
+                # Fall back to text prompt
+                try:
+                    input_data = click.prompt("Enter input data")
+                except click.Abort:
+                    click.echo("Input cancelled", err=True)
+                    sys.exit(1)
+        
+        # At this point input_data must be set
+        if input_data is None:
+            click.echo("Error: No input data provided", err=True)
+            sys.exit(1)
         
         # Get task configuration
         task_config = get_task_config(resolved_task)
@@ -1200,7 +2141,7 @@ def _run_task_command(
         # Check dependencies
         _check_task_deps(task_config, verbose)
         
-        # Run the task
+        # Run the task (quiet mode suppresses progress bars)
         result = _run_task(
             task_name=resolved_task,
             task_config=task_config,
@@ -1209,35 +2150,148 @@ def _run_task_command(
             output_file=output_file,
             device=device,
             dtype=dtype,
-            verbose=verbose,
+            verbose=verbose and not quiet and not output_json,
             **extra_kwargs
         )
         
-        # Print result summary
-        if output_file:
-            click.echo(f"Output saved to: {output_file}")
+        # Embed metadata in output file
+        if output_file and embed_metadata and os.path.exists(output_file):
+            from hftool.core.metadata import embed_metadata as do_embed_metadata
             
-            # Determine if we should open the file
-            should_open = _should_open_output(
-                open_output=open_output,
-                output_file=output_file,
-                output_type=task_config.output_type,
+            # Extract prompt from input_data
+            prompt = None
+            if isinstance(input_data, str):
+                # Try to parse JSON first
+                try:
+                    data = json_module.loads(input_data)
+                    if isinstance(data, dict):
+                        # Look for common prompt keys
+                        prompt = data.get("prompt") or data.get("text") or data.get("caption")
+                except json_module.JSONDecodeError:
+                    # Not JSON, use as-is (but limit length)
+                    prompt = input_data[:500] if len(input_data) > 500 else input_data
+            
+            do_embed_metadata(
+                file_path=output_file,
+                task=resolved_task,
+                model=model or model_repo_id,
+                prompt=prompt,
+                seed=seed,
+                extra_params=extra_kwargs,
+                verbose=verbose and not quiet and not output_json,
             )
+        
+        # Print result summary based on output mode
+        if output_json:
+            # JSON output mode
+            result_data = {
+                "success": True,
+                "task": resolved_task,
+                "model": model or model_repo_id,
+                "input": input_data,
+                "output": output_file,
+                "seed": seed,
+                "device": device,
+                "dtype": dtype,
+            }
             
-            if should_open:
-                _open_file(output_file, verbose)
-        elif isinstance(result, str):
-            click.echo(result)
-        elif isinstance(result, dict) and "text" in result:
-            click.echo(result["text"])
+            # Add result text if available
+            if isinstance(result, str):
+                result_data["text"] = result
+            elif isinstance(result, dict) and "text" in result:
+                result_data["text"] = result["text"]
+            
+            click.echo(json_module.dumps(result_data, indent=2))
+        elif quiet:
+            # Quiet mode - only output file path
+            if output_file:
+                click.echo(output_file)
+            elif isinstance(result, str):
+                click.echo(result)
+            elif isinstance(result, dict) and "text" in result:
+                click.echo(result["text"])
+        else:
+            # Normal output mode
+            if output_file:
+                click.echo(f"Output saved to: {output_file}")
+                
+                # Show reproduction command
+                if verbose or seed is not None:
+                    repro_parts = ["hftool", "-t", resolved_task]
+                    if model:
+                        repro_parts.extend(["-m", model])
+                    repro_parts.extend(["-i", f'"{input_data}"'])
+                    if output_file:
+                        repro_parts.extend(["-o", output_file])
+                    if seed is not None:
+                        repro_parts.extend(["--seed", str(seed)])
+                    click.echo(f"Seed: {seed}")
+                    click.echo(f"To reproduce: {' '.join(repro_parts)}")
+                
+                # Determine if we should open the file
+                should_open = _should_open_output(
+                    open_output=open_output,
+                    output_file=output_file,
+                    output_type=task_config.output_type,
+                )
+                
+                if should_open:
+                    _open_file(output_file, verbose)
+            elif isinstance(result, str):
+                click.echo(result)
+            elif isinstance(result, dict) and "text" in result:
+                click.echo(result["text"])
+        
+        # Record to history (success)
+        from hftool.core.history import History
+        history = History.get()
+        history.add(
+            task=resolved_task,
+            model=model,
+            input_data=input_data,
+            output_file=output_file,
+            device=device,
+            dtype=dtype,
+            seed=seed,
+            extra_args=extra_kwargs,
+            success=True,
+        )
         
     except SystemExit:
         raise
     except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        if verbose:
-            import traceback
-            traceback.print_exc()
+        # Record to history (failure)
+        from hftool.core.history import History
+        history = History.get()
+        history.add(
+            task=task if 'resolved_task' not in locals() else resolved_task,
+            model=model,
+            input_data=input_data or "",
+            output_file=output_file,
+            device=device,
+            dtype=dtype,
+            seed=seed,
+            extra_args=extra_kwargs if 'extra_kwargs' in locals() else {},
+            success=False,
+            error_message=str(e),
+        )
+        
+        # Handle error output based on mode
+        if output_json:
+            error_data = {
+                "success": False,
+                "error": str(e),
+                "task": task if 'resolved_task' not in locals() else resolved_task,
+                "model": model,
+                "input": input_data or "",
+                "output": output_file,
+            }
+            click.echo(json_module.dumps(error_data, indent=2))
+        else:
+            click.echo(f"Error: {e}", err=True)
+            if verbose:
+                import traceback
+                traceback.print_exc()
         sys.exit(1)
 
 
@@ -1339,9 +2393,27 @@ def _open_file(file_path: str, verbose: bool = False) -> bool:
     """
     import platform
     import subprocess
+    from pathlib import Path
     
-    if not os.path.exists(file_path):
-        click.echo(f"Cannot open file: {file_path} (file not found)", err=True)
+    # Security: Validate file path (M-3)
+    try:
+        path = Path(file_path).resolve()
+        
+        # Check file exists
+        if not path.exists():
+            click.echo(f"Cannot open file: {file_path} (file not found)", err=True)
+            return False
+        
+        # Check it's a regular file (not a directory, symlink to dangerous location, etc.)
+        if not path.is_file():
+            click.echo(f"Cannot open file: {file_path} (not a regular file)", err=True)
+            return False
+        
+        # Use the validated absolute path
+        file_path = str(path)
+        
+    except Exception as e:
+        click.echo(f"Cannot open file: invalid path ({e})", err=True)
         return False
     
     system = platform.system().lower()

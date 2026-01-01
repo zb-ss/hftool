@@ -8,12 +8,26 @@ A CLI for running HuggingFace models, optimized for AMD ROCm.
 
 ## Features
 
+### AI Tasks
 - **Text-to-Image**: Z-Image-Turbo, Stable Diffusion XL, FLUX
 - **Image-to-Image**: Qwen Image Edit (advanced editing with multi-image support), SDXL Refiner
 - **Text-to-Video**: HunyuanVideo-1.5, CogVideoX, Wan2.2
 - **Text-to-Speech**: Bark, MMS-TTS, GLM-TTS
 - **Speech-to-Text**: Whisper (with timestamps and SRT export)
 - **Plus**: Text generation, classification, translation, and more via transformers pipelines
+
+### User Experience
+- **Interactive Wizard** (`-I`): Full guided experience - select task, model, input, output, and all options
+- **File Picker** (`@` syntax): Interactive file selection with multiple modes (@, @?, @., @~, @*.ext, @@)
+- **Interactive Input**: Guided JSON builder for complex inputs (image-to-image, etc.)
+- **History Tracking**: View and re-run previous commands with `hftool history`
+- **Dry-Run Mode**: Preview operations without executing (--dry-run)
+- **Configuration Files**: Save preferences in TOML config files
+- **Shell Completions**: Tab completion for bash, zsh, and fish
+- **Better Error Messages**: Actionable suggestions when things go wrong
+- **Progress Bars**: Visual feedback during model loading and generation
+
+### Management
 - **Model Management**: Download, list, and clean up models with simple commands
 - **Auto-Setup**: Detects your hardware and helps install the right PyTorch version
 
@@ -73,6 +87,20 @@ pip install "hftool[with_stt]"
 pip install "hftool[all]"
 ```
 
+### Optional Dependencies
+
+For enhanced user experience features:
+
+```bash
+# Interactive file picker and JSON builder
+pip install InquirerPy
+
+# Or for pipx:
+pipx runpip hftool install InquirerPy
+```
+
+**Note:** Without InquirerPy, the `@` file picker and `--interactive` mode will not work, but all other features remain functional.
+
 ### System Requirements
 
 - **Python**: >= 3.10
@@ -122,17 +150,34 @@ pipx runpip hftool install torch torchvision torchaudio --index-url https://down
 ## Quick Start
 
 ```bash
-# Generate an image (auto-opens when done!)
+# Full interactive wizard - guided experience for beginners
+hftool -I
+
+# Or specify everything on command line
 hftool -t t2i -i "A cat in space" -o cat.png
 
-# Generate speech
-hftool -t tts -i "Hello world" -o hello.wav
+# Interactive file selection
+hftool -t asr -i @ -o transcript.txt
 
-# Transcribe audio
-hftool -t asr -i recording.wav -o transcript.txt
+# Preview before running
+hftool -t t2i -i "A cat" --dry-run
+
+# Reproducible generation with seed
+hftool -t t2i -i "A cat" -o cat.png --seed 42
+
+# Re-run previous command
+hftool history --rerun 5
+
+# Install shell completions for tab completion
+hftool completion --install
 ```
 
-**Auto-open feature**: By default, generated images, audio, and video files automatically open in your system's default application when complete!
+**New features**:
+- **Auto-open**: Generated images, audio, and video files automatically open when complete!
+- **File picker**: Use `@` to interactively select input files
+- **History**: View and re-run previous commands with `hftool history`
+- **Dry-run**: Preview operations without executing with `--dry-run`
+- **Config files**: Save preferences in `~/.hftool/config.toml`
 
 When you run a task for the first time, hftool will prompt you to download the required model:
 
@@ -149,6 +194,363 @@ Model not found: Z-Image Turbo
 
 Download this model now? [Y/n]:
 ```
+
+---
+
+## Configuration File
+
+hftool supports persistent configuration via TOML files for convenience.
+
+### Creating a Config File
+
+```bash
+# Create default config with helpful comments
+hftool config init
+
+# Or manually create ~/.hftool/config.toml
+```
+
+### Config File Structure
+
+```toml
+# ~/.hftool/config.toml
+
+[defaults]
+device = "cuda"          # Device to use: auto, cuda, mps, cpu
+dtype = "bfloat16"       # Data type: bfloat16, float16, float32
+auto_open = true         # Auto-open output files
+verbose = false          # Verbose output
+
+[text-to-image]
+model = "z-image-turbo"  # Default model for this task
+num_inference_steps = 9
+guidance_scale = 0.0
+width = 1024
+height = 1024
+
+[text-to-speech]
+model = "bark-small"
+sample_rate = 24000
+
+[automatic-speech-recognition]
+model = "whisper-large-v3"
+return_timestamps = true
+
+[aliases]
+# Custom model aliases for convenience
+fast-image = "Tongyi-MAI/Z-Image-Turbo"
+quality-image = "black-forest-labs/FLUX.1-dev"
+my-whisper = "openai/whisper-large-v3"
+
+[paths]
+models_dir = "~/.hftool/models"
+output_dir = "~/ai-outputs"
+history_file = "~/.hftool/history.json"
+```
+
+### Config Priority
+
+Settings are applied in this order (highest to lowest):
+1. **CLI arguments** - `hftool -t t2i --device cuda`
+2. **Environment variables** - `HFTOOL_DEVICE=cuda`
+3. **Project config** - `./.hftool/config.toml` (current directory)
+4. **User config** - `~/.hftool/config.toml` (home directory)
+5. **Built-in defaults**
+
+### Config Commands
+
+```bash
+# View current configuration
+hftool config show
+
+# Create default config file
+hftool config init
+
+# Edit config in your $EDITOR
+hftool config edit
+```
+
+### Example Usage
+
+```bash
+# With config file setting device=cuda and model=z-image-turbo
+hftool -t t2i -i "A cat in space" -o cat.png
+# Uses cuda device and z-image-turbo from config
+
+# Override config with CLI args
+hftool -t t2i -i "A cat" -o cat.png --device cpu -m sdxl
+# Uses cpu device and sdxl model (CLI overrides config)
+```
+
+---
+
+## File Picker
+
+hftool includes a powerful file picker that makes it easy to select input files without typing full paths.
+
+### @ Syntax
+
+Use `@` in the `-i` / `--input` parameter to trigger the file picker:
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `@` | Interactive file picker (current directory) | `hftool -t asr -i @ -o transcript.txt` |
+| `@?` | Interactive with fuzzy search (shows all files) | `hftool -t t2i -i @? -o output.png` |
+| `@.` | Pick from current directory | `hftool -t asr -i @. -o transcript.txt` |
+| `@~` | Pick from home directory | `hftool -t t2i -i @~ -o output.png` |
+| `@/path/` | Pick from specific directory | `hftool -t asr -i @/recordings/ -o transcript.txt` |
+| `@*.ext` | Files matching glob pattern | `hftool -t asr -i @*.wav -o transcript.txt` |
+| `@@` | Recent files from history | `hftool -t t2i -i @@ -o output.png` |
+
+### Interactive Mode
+
+When `@?` is used or no matching files are found, hftool enters interactive mode:
+
+```
+? Select a file: 
+  recording1.wav
+  recording2.wav
+> recording3.wav
+  music.mp3
+  podcast.wav
+```
+
+Use arrow keys to select, Enter to confirm, Ctrl+C to cancel.
+
+### Examples
+
+```bash
+# Pick a WAV file interactively
+hftool -t asr -i @ -o transcript.txt
+
+# Select from all files with fuzzy search
+hftool -t t2i -i @? -o output.png
+
+# Pick from a specific directory
+hftool -t asr -i @/home/user/recordings/ -o transcript.txt
+
+# Use glob pattern to filter
+hftool -t asr -i @*.wav -o transcript.txt
+
+# Recent files from history
+hftool -t t2i -i @@ -o output.png
+```
+
+**Note:** The file picker requires the optional `InquirerPy` dependency:
+```bash
+pip install InquirerPy
+# Or for pipx:
+pipx runpip hftool install InquirerPy
+```
+
+---
+
+## Interactive JSON Builder
+
+For tasks that require complex JSON input (like image-to-image), use `--interactive` or `-i @?` to launch an interactive builder:
+
+```bash
+# Interactive mode for image-to-image
+hftool -t i2i --interactive -o output.png
+
+# Or trigger with @?
+hftool -t i2i -i @? -o output.png
+```
+
+The interactive builder guides you through entering parameters:
+
+```
+? image: photo.jpg
+? prompt: turn this into a watercolor painting
+? seed (optional): 42
+? true_cfg_scale (optional): 4.0
+? num_inference_steps (optional): 50
+```
+
+Supports:
+- Image file selection with file picker
+- Multi-image inputs (enter comma-separated paths)
+- Optional parameter skipping (press Enter to use defaults)
+- Parameter validation and type conversion
+
+---
+
+## Command History
+
+hftool tracks all commands you run and allows you to view and re-run them:
+
+### View History
+
+```bash
+# Show recent commands
+hftool history
+
+# Show last 20 commands
+hftool history -n 20
+
+# Output as JSON
+hftool history --json
+```
+
+**Example output:**
+```
+Recent command history:
+================================================================================
+
+[5] ✓ 2024-01-15 14:32:15 - text-to-image
+    Model: z-image-turbo
+    Input: A cat in space
+    Output: cat.png
+    Seed: 42
+    Rerun: hftool history --rerun 5
+
+[4] ✗ 2024-01-15 14:28:10 - automatic-speech-recognition
+    Model: whisper-large-v3
+    Input: recording.wav
+    Output: transcript.txt
+    Error: Model not downloaded
+    Rerun: hftool history --rerun 4
+```
+
+### Re-run Commands
+
+```bash
+# Re-run command #5
+hftool history --rerun 5
+
+# With confirmation prompt
+hftool history --rerun 5
+# Shows: Re-running command #5 from 2024-01-15 14:32:15:
+#   hftool -t text-to-image -i "A cat in space" -o cat.png --seed 42
+# Continue? [Y/n]:
+```
+
+### Clear History
+
+```bash
+# Clear all history
+hftool history --clear
+```
+
+### History Storage
+
+History is stored in `~/.hftool/history.json` by default. Customize with:
+
+```toml
+# ~/.hftool/config.toml
+[paths]
+history_file = "~/custom/path/history.json"
+```
+
+Or via environment variable:
+```bash
+export HFTOOL_HISTORY_FILE=~/custom/path/history.json
+```
+
+---
+
+## Dry-Run Mode
+
+Preview operations without executing them. Useful for:
+- Checking model requirements before downloading
+- Estimating VRAM usage
+- Validating parameters
+
+```bash
+# Preview text-to-image generation
+hftool -t t2i -i "A cat in space" -o cat.png --dry-run
+```
+
+**Example output:**
+```
+============================================================
+Dry-Run Mode: text-to-image
+============================================================
+
+Task:     text-to-image
+Model:    Z-Image Turbo (Tongyi-MAI/Z-Image-Turbo)
+Size:     ~6.0 GB
+Device:   cuda
+Dtype:    bfloat16
+VRAM:     ~10-12 GB estimated
+
+Input:    "A cat in space"
+Output:   cat.png
+
+Parameters:
+  num_inference_steps: 9
+  guidance_scale: 0.0
+  width: 1024
+  height: 1024
+  seed: 42
+
+Dependencies:
+  ✓ torch
+  ✓ diffusers
+  ✓ transformers
+
+Status:   Model downloaded
+
+Would run: hftool -t text-to-image -i "A cat in space" -o cat.png --seed 42
+```
+
+Use dry-run to:
+- **Verify dependencies** before attempting generation
+- **Check disk space** requirements
+- **Estimate VRAM** usage for your GPU
+- **Preview parameters** from config file
+
+---
+
+## Shell Completions
+
+Enable tab completion for faster CLI usage:
+
+```bash
+# Auto-detect shell and install
+hftool completion --install
+
+# Show completion script for bash
+hftool completion bash
+
+# Install for specific shell
+hftool completion zsh --install
+```
+
+After installation, restart your shell or run:
+- bash: `source ~/.bashrc`
+- zsh: `source ~/.zshrc`
+- fish: Completions load automatically
+
+**Completions include**:
+- Task names and aliases (t2i, text-to-image, etc.)
+- Model names (z-image-turbo, whisper-large-v3, etc.)
+- Device options (auto, cuda, mps, cpu)
+- File picker syntax (@, @?, @~, etc.)
+
+---
+
+## System Diagnostics
+
+Check your system setup and troubleshoot issues:
+
+```bash
+# Run all diagnostic checks
+hftool doctor
+
+# Output as JSON
+hftool doctor --json
+```
+
+**Checks performed**:
+- Python version (requires 3.10+)
+- PyTorch installation and GPU detection
+- ffmpeg availability (for video/audio tasks)
+- Network connectivity to HuggingFace Hub
+- Optional feature dependencies
+- Configuration file status
+
+Exit codes: 0=OK, 1=warnings, 2=errors
 
 ---
 
@@ -189,7 +591,14 @@ hftool download --all
 
 # Re-download (force)
 hftool download -t t2i -f
+
+# Resume interrupted download (default)
+hftool download -t t2i
+# Disable resume
+hftool download -t t2i --no-resume
 ```
+
+**Note**: Downloads automatically resume if interrupted. Use `hftool status` to see partial downloads.
 
 ### Check Status
 
@@ -590,10 +999,13 @@ Usage: hftool [OPTIONS] COMMAND [ARGS]...
 Options:
   -t, --task TEXT         Task to perform
   -m, --model TEXT        Model name/path (uses task default if omitted)
-  -i, --input TEXT        Input data: text, file path, or URL
+  -i, --input TEXT        Input data: text, file path, @ reference, @? for interactive
   -o, --output-file TEXT  Output file path (auto-generated if omitted)
   -d, --device TEXT       Device: auto, cuda, mps, cpu (default: auto)
   --dtype TEXT            Data type: bfloat16, float16, float32
+  --seed INTEGER          Random seed for reproducible generation
+  --interactive           Interactive mode for complex inputs (JSON builder)
+  --dry-run               Preview operation without executing
   --open / --no-open      Open output with default app (auto for media files)
   --list-tasks            List all available tasks and aliases
   -v, --verbose           Show detailed progress
@@ -601,10 +1013,12 @@ Options:
 
 Commands:
   setup     Run interactive PyTorch setup wizard
+  config    View and manage configuration (show, init, edit)
   models    List available models for tasks
   download  Download models from HuggingFace Hub
   status    Show download status and disk usage
   clean     Delete downloaded models
+  history   View and manage command history (--rerun, --clear)
   run       Run a task (alternative to -t flag)
 ```
 
