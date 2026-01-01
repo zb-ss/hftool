@@ -1160,6 +1160,8 @@ MIT License
 
 - [GitHub Repository](https://github.com/zb-ss/hftool)
 - [Contributing Guide](CONTRIBUTING.md)
+- [Report a Bug](https://github.com/zb-ss/hftool/issues/new?template=bug_report.md)
+- [Request a Model](https://github.com/zb-ss/hftool/issues/new?template=model_request.md)
 - [Hugging Face](https://huggingface.co)
 
 ### Model References
