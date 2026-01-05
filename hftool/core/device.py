@@ -220,3 +220,98 @@ def get_device_map(device: Optional[str] = None, multi_gpu: bool = True) -> str:
         return "cuda:0"
     
     return device
+
+
+def compile_pipeline(pipe: any, mode: str = "default") -> any:
+    """Apply torch.compile() to a diffusers pipeline for faster inference.
+    
+    This can provide 20-40% speedup on supported hardware, but:
+    - First run is slow (compilation overhead)
+    - Requires PyTorch 2.0+
+    - May not work on all models/pipelines
+    - ROCm support is experimental
+    
+    Environment Variables:
+        HFTOOL_TORCH_COMPILE: Enable torch.compile optimization
+            - "0", "false", "no": Disabled (default)
+            - "1", "true", "yes": Enable with default mode
+            - "reduce-overhead": Optimize for inference speed
+            - "max-autotune": Maximum optimization (slow compile, fastest inference)
+    
+    Args:
+        pipe: Diffusers pipeline object
+        mode: Compile mode - "default", "reduce-overhead", or "max-autotune"
+    
+    Returns:
+        Pipeline with compiled components (or unchanged if compile unavailable/disabled)
+    """
+    if not _TORCH_AVAILABLE:
+        return pipe
+    
+    # Check environment variable
+    compile_env = os.environ.get("HFTOOL_TORCH_COMPILE", "").lower()
+    
+    if compile_env in ("0", "false", "no", ""):
+        return pipe
+    
+    # Determine mode from env if specified
+    if compile_env in ("reduce-overhead", "max-autotune"):
+        mode = compile_env
+    elif compile_env in ("1", "true", "yes", "default"):
+        mode = "default"
+    
+    # Check PyTorch version
+    torch_version = tuple(int(x) for x in torch.__version__.split(".")[:2])
+    if torch_version < (2, 0):
+        import click
+        click.echo(
+            f"Warning: torch.compile requires PyTorch 2.0+, you have {torch.__version__}",
+            err=True
+        )
+        return pipe
+    
+    import click
+    
+    # Check if on ROCm - compile support is experimental
+    device_info = get_device_info()
+    if device_info.is_rocm:
+        click.echo(
+            "Note: torch.compile on ROCm is experimental. "
+            "If you experience issues, disable with HFTOOL_TORCH_COMPILE=0",
+            err=True
+        )
+    
+    click.echo(f"Compiling pipeline with mode='{mode}' (first run will be slower)...")
+    
+    # Compile the main components
+    # Different pipelines have different components
+    components_compiled = []
+    
+    try:
+        # UNet is the main component in most diffusion models
+        if hasattr(pipe, "unet") and pipe.unet is not None:
+            pipe.unet = torch.compile(pipe.unet, mode=mode)
+            components_compiled.append("unet")
+        
+        # Transformer for newer architectures (FLUX, SD3, etc.)
+        if hasattr(pipe, "transformer") and pipe.transformer is not None:
+            pipe.transformer = torch.compile(pipe.transformer, mode=mode)
+            components_compiled.append("transformer")
+        
+        # VAE decoder (used in all image generation)
+        if hasattr(pipe, "vae") and pipe.vae is not None:
+            # Only compile the decoder for faster image output
+            if hasattr(pipe.vae, "decode"):
+                pipe.vae.decode = torch.compile(pipe.vae.decode, mode=mode)
+                components_compiled.append("vae.decode")
+        
+        if components_compiled:
+            click.echo(f"Compiled components: {', '.join(components_compiled)}")
+        else:
+            click.echo("Warning: No compatible components found to compile", err=True)
+            
+    except Exception as e:
+        click.echo(f"Warning: torch.compile failed: {e}", err=True)
+        click.echo("Continuing without compilation...", err=True)
+    
+    return pipe

@@ -119,7 +119,7 @@ class ImageToImageTask(BaseTask):
         check_dependencies(["diffusers", "torch", "accelerate"], extra="with_t2i")
         
         import torch
-        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env
+        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env, compile_pipeline
         
         # Configure ROCm optimizations
         configure_rocm_env()
@@ -206,6 +206,12 @@ class ImageToImageTask(BaseTask):
                 qwen_kwargs["device_map"] = "balanced"
                 if max_memory:
                     qwen_kwargs["max_memory"] = max_memory
+                click.echo(
+                    "Note: Multi-GPU for Qwen Image Edit distributes model layers across GPUs.\n"
+                    "      This reduces per-GPU VRAM usage but inference is still sequential.\n"
+                    "      Both GPUs will show high VRAM but only one computes at a time.\n"
+                    "      For faster inference, try: HFTOOL_TORCH_COMPILE=1"
+                )
             
             # Try the dedicated pipeline
             try:
@@ -273,6 +279,9 @@ class ImageToImageTask(BaseTask):
         else:
             click.echo(f"Loading model on {device}...")
             pipe.to(device)
+        
+        # Apply torch.compile if enabled
+        pipe = compile_pipeline(pipe)
         
         return pipe
     
