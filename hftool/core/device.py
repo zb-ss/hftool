@@ -229,7 +229,7 @@ def compile_pipeline(pipe: any, mode: str = "default") -> any:
     - First run is slow (compilation overhead)
     - Requires PyTorch 2.0+
     - May not work on all models/pipelines
-    - ROCm support is experimental
+    - ROCm support is experimental (requires compatible triton version)
     
     Environment Variables:
         HFTOOL_TORCH_COMPILE: Enable torch.compile optimization
@@ -272,6 +272,29 @@ def compile_pipeline(pipe: any, mode: str = "default") -> any:
     
     import click
     
+    # Check for triton compatibility issues (common on ROCm)
+    try:
+        # Test if triton is properly installed and compatible
+        import triton
+        from triton.compiler.compiler import triton_key  # noqa: F401
+    except ImportError as e:
+        if "triton_key" in str(e):
+            click.echo(
+                "Warning: triton version incompatible with torch.compile. "
+                "Try: pip install triton==3.0.0 or disable with HFTOOL_TORCH_COMPILE=0",
+                err=True
+            )
+        else:
+            click.echo(
+                f"Warning: triton not available for torch.compile: {e}",
+                err=True
+            )
+        click.echo("Continuing without compilation...", err=True)
+        return pipe
+    except Exception:
+        # triton might not be installed at all, which is fine for some backends
+        pass
+    
     # Check if on ROCm - compile support is experimental
     device_info = get_device_info()
     if device_info.is_rocm:
@@ -282,6 +305,13 @@ def compile_pipeline(pipe: any, mode: str = "default") -> any:
         )
     
     click.echo(f"Compiling pipeline with mode='{mode}' (first run will be slower)...")
+    
+    # Enable dynamo error suppression to fall back gracefully on runtime errors
+    try:
+        import torch._dynamo
+        torch._dynamo.config.suppress_errors = True
+    except Exception:
+        pass
     
     # Compile the main components
     # Different pipelines have different components
