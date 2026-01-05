@@ -113,6 +113,21 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             description="High-quality FLUX model",
             metadata={"num_inference_steps": 28, "guidance_scale": 3.5},
         ),
+        "qwen-image-2512": ModelInfo(
+            repo_id="Qwen/Qwen-Image-2512",
+            name="Qwen Image 2512",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=25.0,
+            description="Qwen text-to-image with enhanced human realism and detail",
+            pip_dependencies=["diffusers>=0.36.0", "transformers>=4.45.0"],
+            metadata={
+                "num_inference_steps": 50,
+                "guidance_scale": 0.0,
+                "true_cfg_scale": 4.0,
+                "height": 1328,
+                "width": 1328,
+            },
+        ),
     },
     
     # =========================================================================

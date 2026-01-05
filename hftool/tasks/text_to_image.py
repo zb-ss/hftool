@@ -32,6 +32,13 @@ class TextToImageTask(TextInputMixin, BaseTask):
             "height": 1024,
             "width": 1024,
         },
+        "Qwen-Image-2512": {
+            "num_inference_steps": 50,
+            "guidance_scale": 0.0,
+            "true_cfg_scale": 4.0,
+            "height": 1328,
+            "width": 1328,
+        },
         "FLUX": {
             "num_inference_steps": 4,
             "guidance_scale": 0.0,
