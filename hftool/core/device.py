@@ -271,29 +271,58 @@ def compile_pipeline(pipe: any, mode: str = "default") -> any:
         return pipe
     
     import click
+    import subprocess
+    import sys
     
-    # Check for triton compatibility issues (common on ROCm)
+    # Check for triton and install/upgrade if needed
+    triton_ok = False
     try:
-        # Test if triton is properly installed and compatible
         import triton
         from triton.compiler.compiler import triton_key  # noqa: F401
+        triton_ok = True
     except ImportError as e:
-        if "triton_key" in str(e):
-            click.echo(
-                "Warning: triton version incompatible with torch.compile. "
-                "Try: pip install triton==3.0.0 or disable with HFTOOL_TORCH_COMPILE=0",
-                err=True
-            )
+        if "triton_key" in str(e) or "No module named 'triton'" in str(e):
+            # Triton missing or incompatible - try to install/upgrade
+            click.echo("Installing/upgrading triton for torch.compile...")
+            try:
+                subprocess.check_call(
+                    [sys.executable, "-m", "pip", "install", "--upgrade", "triton>=3.0.0"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                # Try import again
+                import importlib
+                if 'triton' in sys.modules:
+                    del sys.modules['triton']
+                    # Also remove submodules
+                    for mod in list(sys.modules.keys()):
+                        if mod.startswith('triton'):
+                            del sys.modules[mod]
+                import triton
+                from triton.compiler.compiler import triton_key  # noqa: F401
+                triton_ok = True
+                click.echo("Triton installed successfully.")
+            except Exception as install_error:
+                click.echo(
+                    f"Warning: Could not install triton: {install_error}",
+                    err=True
+                )
+                click.echo("Continuing without torch.compile...", err=True)
+                return pipe
         else:
             click.echo(
                 f"Warning: triton not available for torch.compile: {e}",
                 err=True
             )
-        click.echo("Continuing without compilation...", err=True)
-        return pipe
+            click.echo("Continuing without compilation...", err=True)
+            return pipe
     except Exception:
-        # triton might not be installed at all, which is fine for some backends
+        # Other errors - try to continue
         pass
+    
+    if not triton_ok:
+        click.echo("Warning: triton not available, skipping torch.compile", err=True)
+        return pipe
     
     # Check if on ROCm - compile support is experimental
     device_info = get_device_info()
