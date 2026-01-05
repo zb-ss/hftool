@@ -348,8 +348,8 @@ def compile_pipeline(pipe: any, mode: str = "default") -> any:
     
     # Enable dynamo error suppression to fall back gracefully on runtime errors
     try:
-        import torch._dynamo
-        torch._dynamo.config.suppress_errors = True
+        import torch._dynamo as _dynamo
+        _dynamo.config.suppress_errors = True
     except Exception:
         pass
     
@@ -360,12 +360,12 @@ def compile_pipeline(pipe: any, mode: str = "default") -> any:
     try:
         # UNet is the main component in most diffusion models
         if hasattr(pipe, "unet") and pipe.unet is not None:
-            pipe.unet = torch.compile(pipe.unet, mode=mode)
+            pipe.unet = torch.compile(pipe.unet, mode=mode)  # type: ignore
             components_compiled.append("unet")
         
         # Transformer for newer architectures (FLUX, SD3, etc.)
         if hasattr(pipe, "transformer") and pipe.transformer is not None:
-            pipe.transformer = torch.compile(pipe.transformer, mode=mode)
+            pipe.transformer = torch.compile(pipe.transformer, mode=mode)  # type: ignore
             components_compiled.append("transformer")
         
         # VAE decoder (used in all image generation)
