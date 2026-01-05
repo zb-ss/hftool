@@ -302,6 +302,17 @@ def compile_pipeline(pipe: any, mode: str = "default") -> any:
                 from triton.compiler.compiler import triton_key  # noqa: F401
                 triton_ok = True
                 click.echo("Triton installed successfully.")
+            except subprocess.CalledProcessError as install_error:
+                click.echo(
+                    f"Warning: Could not install triton (exit code {install_error.returncode})",
+                    err=True
+                )
+                click.echo(
+                    "Try manually: pipx runpip hftool install triton>=3.0.0",
+                    err=True
+                )
+                click.echo("Continuing without torch.compile...", err=True)
+                return pipe
             except Exception as install_error:
                 click.echo(
                     f"Warning: Could not install triton: {install_error}",
