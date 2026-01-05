@@ -101,12 +101,12 @@ if _rocm_path and os.path.isdir(_rocm_path):
     if _rocm_path not in _ld_path:
         os.environ["LD_LIBRARY_PATH"] = f"{_rocm_path}:{_ld_path}".rstrip(":")
 
-# Configure ROCm/HIP memory allocation early (before PyTorch is imported)
+# Configure memory allocation early (before PyTorch is imported)
 # This helps prevent OOM errors with large images
-if "PYTORCH_HIP_ALLOC_CONF" not in os.environ:
-    os.environ["PYTORCH_HIP_ALLOC_CONF"] = "expandable_segments:True"
-if "PYTORCH_CUDA_ALLOC_CONF" not in os.environ:
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+# Note: PYTORCH_CUDA_ALLOC_CONF and PYTORCH_HIP_ALLOC_CONF are deprecated,
+# use PYTORCH_ALLOC_CONF instead (works for both CUDA and ROCm)
+if "PYTORCH_ALLOC_CONF" not in os.environ:
+    os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
 import click
 
