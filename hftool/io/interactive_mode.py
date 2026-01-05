@@ -255,11 +255,13 @@ def _get_input(inquirer, task: str) -> str:
     Returns:
         Input string (text, file path, or JSON)
     """
-    from hftool.core.registry import get_task_config
+    import json
+    from hftool.core.registry import get_task_config, TASK_ALIASES
     from hftool.core.parameters import get_task_schema
     from hftool.io.file_picker import FilePicker, FileType
     
     config = get_task_config(task)
+    resolved_task = TASK_ALIASES.get(task, task)
     
     if config.input_type == "text":
         # Text input - simple prompt
@@ -294,34 +296,52 @@ def _get_input(inquirer, task: str) -> str:
         }
         file_type = file_type_map.get(config.input_type, FileType.ALL)
         
-        # Show file picker options
-        input_method = inquirer.select(
-            message=f"How to provide {config.input_type} input?",
-            choices=[
-                {"name": "Browse files (current directory)", "value": "@"},
-                {"name": "Browse files (home directory)", "value": "@~"},
-                {"name": "Recent files from history", "value": "@@"},
-                {"name": "Enter path manually", "value": "manual"},
-            ],
-            default="@",
-        ).execute()
+        # Get the file first
+        file_path = _get_file_with_navigation(inquirer, config.input_type, file_type, task)
         
-        if input_method == "manual":
-            file_path = inquirer.filepath(
-                message=f"Enter {config.input_type} file path:",
-                validate=lambda x: Path(os.path.expanduser(x)).exists(),
-                only_files=True,
-            ).execute()
-            # Expand ~ to home directory
-            return os.path.expanduser(file_path)
-        else:
-            # Use file picker
-            picker = FilePicker(file_type=file_type)
-            try:
-                return picker.resolve_reference(input_method, task=task)
-            except ValueError as e:
-                click.echo(f"Error: {e}", err=True)
-                return _get_input(inquirer, task)
+        # For image-to-image, also get a prompt
+        if resolved_task == "image-to-image":
+            click.echo("")
+            click.echo(click.style("Enter edit prompt (describe what changes you want):", fg="cyan"))
+            click.echo(click.style("(Multi-line: end with empty line, or use Ctrl+D)", fg="white", dim=True))
+            
+            lines = []
+            while True:
+                try:
+                    line = input("> " if not lines else "  ")
+                    if not line and lines:
+                        break
+                    lines.append(line)
+                except EOFError:
+                    break
+            
+            prompt = "\n".join(lines).strip()
+            
+            # Return JSON format for i2i
+            return json.dumps({"image": file_path, "prompt": prompt})
+        
+        # For image-to-video, also get a prompt
+        if resolved_task == "image-to-video":
+            click.echo("")
+            click.echo(click.style("Enter motion prompt (describe the video motion):", fg="cyan"))
+            click.echo(click.style("(Multi-line: end with empty line, or use Ctrl+D)", fg="white", dim=True))
+            
+            lines = []
+            while True:
+                try:
+                    line = input("> " if not lines else "  ")
+                    if not line and lines:
+                        break
+                    lines.append(line)
+                except EOFError:
+                    break
+            
+            prompt = "\n".join(lines).strip()
+            
+            # Return JSON format for i2v
+            return json.dumps({"image": file_path, "prompt": prompt})
+        
+        return file_path
     
     else:
         # Complex input - check for schema
@@ -345,6 +365,235 @@ def _get_input(inquirer, task: str) -> str:
             message="Input:",
             validate=lambda x: len(x.strip()) > 0,
         ).execute()
+
+
+def _get_file_with_navigation(inquirer, input_type: str, file_type, task: str) -> str:
+    """Get a file path with directory navigation support.
+    
+    Args:
+        inquirer: InquirerPy module
+        input_type: Type of input (image, audio, video)
+        file_type: FileType enum
+        task: Task name
+    
+    Returns:
+        Selected file path
+    """
+    from hftool.io.file_picker import FilePicker
+    
+    while True:
+        # Show file picker options
+        input_method = inquirer.select(
+            message=f"How to provide {input_type} input?",
+            choices=[
+                {"name": "Browse files (current directory)", "value": "@"},
+                {"name": "Browse files (home directory)", "value": "@~"},
+                {"name": "Recent files from history", "value": "@@"},
+                {"name": "Enter path manually", "value": "manual"},
+            ],
+            default="@",
+        ).execute()
+        
+        if input_method == "manual":
+            file_path = inquirer.filepath(
+                message=f"Enter {input_type} file path:",
+                validate=lambda x: Path(os.path.expanduser(x)).exists(),
+                only_files=True,
+            ).execute()
+            # Expand ~ to home directory
+            return os.path.expanduser(file_path)
+        else:
+            # Use file picker with navigation
+            picker = FilePicker(file_type=file_type)
+            try:
+                result = _pick_file_with_navigation(inquirer, picker, input_method, task, file_type)
+                if result:
+                    return result
+                # If result is None, loop back to show options again
+            except ValueError as e:
+                click.echo(f"Error: {e}", err=True)
+                # Loop back to show options again
+
+
+def _pick_file_with_navigation(inquirer, picker, reference: str, task: str, file_type) -> Optional[str]:
+    """Pick a file with directory navigation support and fuzzy search.
+    
+    Args:
+        inquirer: InquirerPy module
+        picker: FilePicker instance
+        reference: File reference string (@, @~, @@)
+        task: Task name
+        file_type: FileType enum
+    
+    Returns:
+        Selected file path or None to go back to method selection
+    """
+    from InquirerPy.base.control import Choice
+    from InquirerPy.separator import Separator
+    
+    # Handle history reference directly
+    if reference == "@@":
+        return picker.resolve_reference(reference, task=task)
+    
+    # Determine starting directory
+    if reference == "@~":
+        current_dir = Path.home()
+    elif reference.startswith("@/"):
+        current_dir = Path(reference[1:]).expanduser().resolve()
+    else:
+        current_dir = Path.cwd()
+    
+    while True:
+        # Get files and directories in current location
+        directories = []
+        files = []
+        
+        try:
+            for item in sorted(current_dir.iterdir()):
+                # Skip hidden files
+                if item.name.startswith("."):
+                    continue
+                
+                if item.is_dir():
+                    directories.append(item)
+                elif item.is_file() and picker._matches_file_type(item):
+                    files.append(item)
+        except PermissionError:
+            click.echo(f"Error: Permission denied accessing {current_dir}", err=True)
+            return None
+        
+        total_files = len(files)
+        total_dirs = len(directories)
+        
+        # If there are many files, use fuzzy search instead of showing all
+        if total_files > 50:
+            result = _fuzzy_file_search(inquirer, picker, current_dir, files, directories)
+            if result == "__BACK__":
+                return None
+            elif result == "__UP__":
+                current_dir = current_dir.parent
+                continue
+            elif isinstance(result, tuple):
+                item_type, item_path = result
+                if item_type == "dir":
+                    current_dir = item_path
+                    continue
+                else:
+                    return str(item_path)
+            elif result is None:
+                return None
+            continue
+        
+        # Build choices for smaller directories
+        choices = []
+        
+        # Navigation options
+        choices.append(Separator("--- Navigation ---"))
+        choices.append(Choice(value="__BACK__", name="[..] Go back to input method selection"))
+        if current_dir != current_dir.parent:
+            parent_name = current_dir.parent.name or "/"
+            choices.append(Choice(value="__UP__", name=f"[..] Parent directory ({parent_name})"))
+        
+        # Directories
+        if directories:
+            choices.append(Separator(f"--- Folders ({total_dirs}) ---"))
+            for d in directories[:50]:
+                choices.append(Choice(value=("dir", d), name=f"[DIR]  {d.name}/"))
+            if total_dirs > 50:
+                choices.append(Separator(f"    ... and {total_dirs - 50} more folders"))
+        
+        # Files
+        if files:
+            choices.append(Separator(f"--- Files ({total_files}) ---"))
+            for f in files:
+                size = f.stat().st_size
+                size_str = picker._format_size(size)
+                choices.append(Choice(value=("file", f), name=f"[FILE] {f.name} ({size_str})"))
+        
+        if not files and not directories:
+            click.echo(f"No matching files or folders in {current_dir}", err=True)
+        
+        # Show prompt with current directory
+        click.echo("")
+        click.echo(click.style(f"Current: {current_dir}", fg="cyan", dim=True))
+        click.echo(click.style("(Use arrow keys, Enter to select, Ctrl+C to go back)", dim=True))
+        
+        try:
+            result = inquirer.select(
+                message="Select file or folder:",
+                choices=choices,
+            ).execute()
+        except KeyboardInterrupt:
+            return None
+        
+        if result is None or result == "__BACK__":
+            return None
+        elif result == "__UP__":
+            current_dir = current_dir.parent
+        elif isinstance(result, tuple):
+            item_type, item_path = result
+            if item_type == "dir":
+                current_dir = item_path
+            else:
+                return str(item_path)
+
+
+def _fuzzy_file_search(inquirer, picker, current_dir: Path, files: list, directories: list) -> Optional[Any]:
+    """Fuzzy search for files in a directory with many items.
+    
+    Args:
+        inquirer: InquirerPy module
+        picker: FilePicker instance
+        current_dir: Current directory path
+        files: List of file paths
+        directories: List of directory paths
+    
+    Returns:
+        Tuple of (type, path), "__BACK__", "__UP__", or None
+    """
+    from InquirerPy.base.control import Choice
+    
+    total_files = len(files)
+    total_dirs = len(directories)
+    
+    click.echo("")
+    click.echo(click.style(f"Current: {current_dir}", fg="cyan", dim=True))
+    click.echo(click.style(f"Found {total_files} files and {total_dirs} folders", fg="yellow"))
+    click.echo(click.style("Type to search, use arrow keys to navigate results", dim=True))
+    
+    # Build all choices for fuzzy search
+    choices = []
+    
+    # Navigation options first
+    choices.append(Choice(value="__BACK__", name="[..] Go back to input method selection"))
+    if current_dir != current_dir.parent:
+        parent_name = current_dir.parent.name or "/"
+        choices.append(Choice(value="__UP__", name=f"[..] Parent directory ({parent_name})"))
+    
+    # Add all directories
+    for d in directories:
+        choices.append(Choice(value=("dir", d), name=f"[DIR]  {d.name}/"))
+    
+    # Add all files with size info
+    for f in files:
+        try:
+            size = f.stat().st_size
+            size_str = picker._format_size(size)
+            choices.append(Choice(value=("file", f), name=f"[FILE] {f.name} ({size_str})"))
+        except OSError:
+            # File might have been deleted or inaccessible
+            continue
+    
+    try:
+        result = inquirer.fuzzy(
+            message="Search files (type to filter):",
+            choices=choices,
+            max_height="70%",
+        ).execute()
+    except KeyboardInterrupt:
+        return None
+    
+    return result
 
 
 def _get_output(inquirer, task: str) -> Optional[str]:
