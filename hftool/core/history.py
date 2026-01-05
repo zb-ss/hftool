@@ -346,12 +346,30 @@ class History:
                     seen.add(entry.output_file)
             
             # Check input file (if it's a file path)
-            if entry.input_data and not entry.input_data.startswith("{") and entry.input_data not in seen:
+            # Skip if it looks like a prompt (no file extension, too long, or JSON)
+            if entry.input_data and entry.input_data not in seen:
                 from pathlib import Path
-                if Path(entry.input_data).exists():
-                    if file_type is None or self._matches_file_type(entry.input_data, file_type):
-                        files.append(entry.input_data)
-                        seen.add(entry.input_data)
+                # Skip JSON data
+                if entry.input_data.startswith("{"):
+                    continue
+                # Skip if too long to be a valid path (filesystem limit is typically 255-4096 chars)
+                if len(entry.input_data) > 255:
+                    continue
+                # Skip if it doesn't look like a file path (no extension or contains newlines)
+                if "\n" in entry.input_data:
+                    continue
+                try:
+                    path = Path(entry.input_data)
+                    # Skip if no file extension (likely a prompt)
+                    if not path.suffix:
+                        continue
+                    if path.exists():
+                        if file_type is None or self._matches_file_type(entry.input_data, file_type):
+                            files.append(entry.input_data)
+                            seen.add(entry.input_data)
+                except OSError:
+                    # Path is invalid (too long, contains null bytes, etc.)
+                    continue
             
             if len(files) >= limit:
                 break

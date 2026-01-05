@@ -13,7 +13,7 @@ import os
 import sys
 import warnings
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 # Load .env file FIRST (before ROCm setup) so env vars can be configured there
 try:
@@ -592,6 +592,7 @@ def main(
                 output_json=params.get("output_json", output_json),
                 embed_metadata=embed_metadata,
                 open_output=open,
+                wizard_extra_kwargs=params.get("extra_kwargs"),
             )
         except click.Abort:
             sys.exit(0)
@@ -1834,6 +1835,7 @@ def _run_task_command(
     output_json: bool = False,
     embed_metadata: bool = True,
     open_output: Optional[bool] = None,
+    wizard_extra_kwargs: Optional[Dict[str, Any]] = None,
 ):
     """Execute a task (internal helper)."""
     import random
@@ -1842,6 +1844,11 @@ def _run_task_command(
     # Parse extra arguments (after --)
     extra_args = ctx.obj.get("extra_args", ()) if ctx.obj else ()
     extra_kwargs = _parse_extra_args(list(extra_args))
+    
+    # Merge wizard extra_kwargs (from interactive mode) with CLI extra args
+    # CLI args take priority over wizard params
+    if wizard_extra_kwargs:
+        extra_kwargs = {**wizard_extra_kwargs, **extra_kwargs}
     
     # Generate random seed if not provided
     if seed is None:
