@@ -119,7 +119,7 @@ class ImageToImageTask(BaseTask):
         check_dependencies(["diffusers", "torch", "accelerate"], extra="with_t2i")
         
         import torch
-        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env, compile_pipeline
+        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env
         
         # Configure ROCm optimizations
         configure_rocm_env()
@@ -279,9 +279,6 @@ class ImageToImageTask(BaseTask):
         else:
             click.echo(f"Loading model on {device}...")
             pipe.to(device)
-        
-        # Apply torch.compile if enabled
-        pipe = compile_pipeline(pipe)
         
         return pipe
     

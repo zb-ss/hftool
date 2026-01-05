@@ -105,7 +105,7 @@ class TextToImageTask(TextInputMixin, BaseTask):
         check_dependencies(["diffusers", "torch", "accelerate"], extra="with_video")
         
         import torch
-        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env, compile_pipeline
+        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env
         
         # Configure ROCm optimizations early (before any GPU operations)
         configure_rocm_env()
@@ -269,9 +269,6 @@ class TextToImageTask(TextInputMixin, BaseTask):
                             raise
                     else:
                         raise
-        
-        # Apply torch.compile if enabled
-        pipe = compile_pipeline(pipe)
         
         return pipe
     

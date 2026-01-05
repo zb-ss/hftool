@@ -222,31 +222,7 @@ def get_device_map(device: Optional[str] = None, multi_gpu: bool = True) -> str:
     return device
 
 
-def compile_pipeline(pipe: any, mode: str = "default") -> any:
-    """Apply torch.compile() to a diffusers pipeline for faster inference.
-    
-    This can provide 20-40% speedup on supported hardware, but:
-    - First run is slow (compilation overhead)
-    - Requires PyTorch 2.0+
-    - May not work on all models/pipelines
-    - ROCm support is experimental (requires compatible triton version)
-    
-    Environment Variables:
-        HFTOOL_TORCH_COMPILE: Enable torch.compile optimization
-            - "0", "false", "no": Disabled (default)
-            - "1", "true", "yes": Enable with default mode
-            - "reduce-overhead": Optimize for inference speed
-            - "max-autotune": Maximum optimization (slow compile, fastest inference)
-    
-    Args:
-        pipe: Diffusers pipeline object
-        mode: Compile mode - "default", "reduce-overhead", or "max-autotune"
-    
-    Returns:
-        Pipeline with compiled components (or unchanged if compile unavailable/disabled)
-    """
-    if not _TORCH_AVAILABLE:
-        return pipe
+
     
     # Check environment variable
     compile_env = os.environ.get("HFTOOL_TORCH_COMPILE", "").lower()
