@@ -285,30 +285,30 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                 pipe._hftool_multi_gpu = True
                 
                 # The transformer is now distributed across all GPUs via device_map.
-                # For memory efficiency, move VAE and text encoders to the last GPU
-                # which typically has more free memory (transformer layers are distributed).
+                # For other components (VAE, text encoders), we need CPU offload
+                # but we must NOT call enable_model_cpu_offload as it breaks
+                # the distributed transformer.
                 #
-                # Note: If this still OOMs, try HFTOOL_MULTI_GPU=0 to use single-GPU
-                # with CPU offload instead.
-                auxiliary_device = f"cuda:{num_gpus - 1}"
-                try:
-                    if hasattr(pipe, "text_encoder") and pipe.text_encoder is not None:
-                        pipe.text_encoder.to(auxiliary_device)
-                    if hasattr(pipe, "text_encoder_2") and pipe.text_encoder_2 is not None:
-                        pipe.text_encoder_2.to(auxiliary_device)
-                    # VAE needs significant memory, try to put on last GPU
-                    if hasattr(pipe, "vae") and pipe.vae is not None:
-                        pipe.vae.to(auxiliary_device)
-                    click.echo(f"Transformer distributed across {num_gpus} GPUs")
-                    click.echo(f"VAE and text encoders on {auxiliary_device}")
-                except RuntimeError as e:
-                    if "out of memory" in str(e).lower():
-                        # Fall back to CPU offload if we can't fit on GPUs
-                        click.echo(f"Not enough GPU memory for VAE, enabling CPU offload...")
-                        if hasattr(pipe, "enable_model_cpu_offload"):
-                            pipe.enable_model_cpu_offload(gpu_id=num_gpus - 1)
-                    else:
-                        raise
+                # Instead, manually set up offload hooks for non-transformer components.
+                # The accelerate library's hooks will move components to GPU when needed.
+                from accelerate import cpu_offload_with_hook
+                
+                # Offload VAE to CPU with hook to move to last GPU when needed
+                auxiliary_device = torch.device(f"cuda:{num_gpus - 1}")
+                hook = None
+                
+                if hasattr(pipe, "text_encoder") and pipe.text_encoder is not None:
+                    pipe.text_encoder, hook = cpu_offload_with_hook(pipe.text_encoder, auxiliary_device, prev_module_hook=hook)
+                if hasattr(pipe, "text_encoder_2") and pipe.text_encoder_2 is not None:
+                    pipe.text_encoder_2, hook = cpu_offload_with_hook(pipe.text_encoder_2, auxiliary_device, prev_module_hook=hook)
+                if hasattr(pipe, "vae") and pipe.vae is not None:
+                    pipe.vae, hook = cpu_offload_with_hook(pipe.vae, auxiliary_device, prev_module_hook=hook)
+                
+                # Store the final hook to ensure proper cleanup
+                pipe._offload_hook = hook
+                
+                click.echo(f"Transformer distributed across {num_gpus} GPUs")
+                click.echo(f"VAE and text encoders using CPU offload on cuda:{num_gpus - 1}")
                 
             else:
                 from diffusers import HunyuanVideo15Pipeline
