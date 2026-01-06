@@ -185,9 +185,14 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         
         # Check if pipeline has been placed on devices via device_map
         has_device_map = hasattr(pipe, "hf_device_map") and pipe.hf_device_map
+        # Also check if we loaded with multi-GPU transformer (marked by _load_hunyuanvideo)
+        has_multi_gpu = getattr(pipe, "_hftool_multi_gpu", False)
         
         if has_device_map:
             click.echo(f"Model distributed across devices: {pipe.hf_device_map}")
+        elif has_multi_gpu:
+            # Multi-GPU transformer already set up, skip CPU offload
+            click.echo("Multi-GPU setup complete, skipping CPU offload")
         elif disable_cpu_offload:
             # User explicitly disabled CPU offload
             click.echo(f"Loading model fully on {device}...")
@@ -239,12 +244,12 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         
         try:
             if use_multi_gpu:
-                # Multi-GPU: Load transformer distributed across GPUs, VAE with CPU offload
+                # Multi-GPU: Load transformer distributed across GPUs
                 click.echo(f"Loading HunyuanVideo with multi-GPU transformer ({num_gpus} GPUs)...")
                 
                 from diffusers import HunyuanVideo15Pipeline, AutoModel
                 
-                # Calculate max memory per GPU for transformer (leave room for other ops)
+                # Calculate max memory per GPU for transformer
                 max_memory = {}
                 for i in range(num_gpus):
                     try:
@@ -263,12 +268,29 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                 )
                 click.echo(f"Transformer distributed: {getattr(transformer, 'hf_device_map', 'single device')}")
                 
-                # Load pipeline without transformer (we'll add it)
+                # Load pipeline with distributed transformer
                 pipe = HunyuanVideo15Pipeline.from_pretrained(
                     model,
                     transformer=transformer,
                     **kwargs
                 )
+                
+                # Mark pipeline as having distributed components
+                # This prevents CPU offload from being applied later
+                pipe._hftool_multi_gpu = True
+                
+                # Move non-distributed components (VAE, text encoders) to first GPU
+                # The transformer stays distributed across all GPUs
+                device = "cuda:0"
+                if hasattr(pipe, "vae") and pipe.vae is not None:
+                    pipe.vae.to(device)
+                if hasattr(pipe, "text_encoder") and pipe.text_encoder is not None:
+                    pipe.text_encoder.to(device)
+                if hasattr(pipe, "text_encoder_2") and pipe.text_encoder_2 is not None:
+                    pipe.text_encoder_2.to(device)
+                    
+                click.echo(f"VAE and text encoders on {device}, transformer distributed across GPUs")
+                
             else:
                 from diffusers import HunyuanVideo15Pipeline
                 pipe = HunyuanVideo15Pipeline.from_pretrained(model, **kwargs)
