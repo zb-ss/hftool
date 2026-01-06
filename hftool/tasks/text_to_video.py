@@ -250,11 +250,17 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                 from diffusers import HunyuanVideo15Pipeline, AutoModel
                 
                 # Calculate max memory per GPU for transformer
+                # Reserve more memory on the last GPU for VAE and text encoders
                 max_memory = {}
                 for i in range(num_gpus):
                     try:
                         mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
-                        max_memory[i] = f"{int(mem_gb - 4)}GB"  # Reserve 4GB per GPU
+                        if i == num_gpus - 1:
+                            # Last GPU: reserve 8GB for VAE (~2GB) + text encoders (~2GB) + overhead
+                            max_memory[i] = f"{int(mem_gb - 8)}GB"
+                        else:
+                            # Other GPUs: reserve 2GB for overhead
+                            max_memory[i] = f"{int(mem_gb - 2)}GB"
                     except Exception:
                         pass
                 
@@ -276,20 +282,33 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                 )
                 
                 # Mark pipeline as having distributed components
-                # This prevents CPU offload from being applied later
                 pipe._hftool_multi_gpu = True
                 
-                # Move non-distributed components (VAE, text encoders) to first GPU
-                # The transformer stays distributed across all GPUs
-                device = "cuda:0"
-                if hasattr(pipe, "vae") and pipe.vae is not None:
-                    pipe.vae.to(device)
-                if hasattr(pipe, "text_encoder") and pipe.text_encoder is not None:
-                    pipe.text_encoder.to(device)
-                if hasattr(pipe, "text_encoder_2") and pipe.text_encoder_2 is not None:
-                    pipe.text_encoder_2.to(device)
-                    
-                click.echo(f"VAE and text encoders on {device}, transformer distributed across GPUs")
+                # The transformer is now distributed across all GPUs via device_map.
+                # For memory efficiency, move VAE and text encoders to the last GPU
+                # which typically has more free memory (transformer layers are distributed).
+                #
+                # Note: If this still OOMs, try HFTOOL_MULTI_GPU=0 to use single-GPU
+                # with CPU offload instead.
+                auxiliary_device = f"cuda:{num_gpus - 1}"
+                try:
+                    if hasattr(pipe, "text_encoder") and pipe.text_encoder is not None:
+                        pipe.text_encoder.to(auxiliary_device)
+                    if hasattr(pipe, "text_encoder_2") and pipe.text_encoder_2 is not None:
+                        pipe.text_encoder_2.to(auxiliary_device)
+                    # VAE needs significant memory, try to put on last GPU
+                    if hasattr(pipe, "vae") and pipe.vae is not None:
+                        pipe.vae.to(auxiliary_device)
+                    click.echo(f"Transformer distributed across {num_gpus} GPUs")
+                    click.echo(f"VAE and text encoders on {auxiliary_device}")
+                except RuntimeError as e:
+                    if "out of memory" in str(e).lower():
+                        # Fall back to CPU offload if we can't fit on GPUs
+                        click.echo(f"Not enough GPU memory for VAE, enabling CPU offload...")
+                        if hasattr(pipe, "enable_model_cpu_offload"):
+                            pipe.enable_model_cpu_offload(gpu_id=num_gpus - 1)
+                    else:
+                        raise
                 
             else:
                 from diffusers import HunyuanVideo15Pipeline
