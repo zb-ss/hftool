@@ -264,22 +264,12 @@ def _get_input(inquirer, task: str) -> str:
     resolved_task = TASK_ALIASES.get(task, task)
     
     if config.input_type == "text":
-        # Text input - simple prompt
+        # Text input - use prompt_toolkit for proper multiline support
+        from prompt_toolkit import prompt as pt_prompt
         click.echo("")
         click.echo(click.style("Enter your prompt:", fg="cyan"))
-        click.echo(click.style("(Multi-line: end with empty line, or use Ctrl+D)", fg="white", dim=True))
-        
-        lines = []
-        while True:
-            try:
-                line = input("> " if not lines else "  ")
-                if not line and lines:
-                    break
-                lines.append(line)
-            except EOFError:
-                break
-        
-        text = "\n".join(lines)
+        click.echo(click.style("(Arrow keys to navigate, Esc+Enter to finish)", fg="white", dim=True))
+        text = pt_prompt("> ", multiline=True)
         
         if not text.strip():
             click.echo("Error: Prompt cannot be empty", err=True)
@@ -301,45 +291,25 @@ def _get_input(inquirer, task: str) -> str:
         
         # For image-to-image, also get a prompt
         if resolved_task == "image-to-image":
+            from prompt_toolkit import prompt as pt_prompt
             click.echo("")
             click.echo(click.style("Enter edit prompt (describe what changes you want):", fg="cyan"))
-            click.echo(click.style("(Multi-line: end with empty line, or use Ctrl+D)", fg="white", dim=True))
-            
-            lines = []
-            while True:
-                try:
-                    line = input("> " if not lines else "  ")
-                    if not line and lines:
-                        break
-                    lines.append(line)
-                except EOFError:
-                    break
-            
-            prompt = "\n".join(lines).strip()
+            click.echo(click.style("(Arrow keys to navigate, Esc+Enter to finish)", fg="white", dim=True))
+            prompt = pt_prompt("> ", multiline=True)
             
             # Return JSON format for i2i
-            return json.dumps({"image": file_path, "prompt": prompt})
+            return json.dumps({"image": file_path, "prompt": prompt.strip()})
         
         # For image-to-video, also get a prompt
         if resolved_task == "image-to-video":
+            from prompt_toolkit import prompt as pt_prompt
             click.echo("")
             click.echo(click.style("Enter motion prompt (describe the video motion):", fg="cyan"))
-            click.echo(click.style("(Multi-line: end with empty line, or use Ctrl+D)", fg="white", dim=True))
-            
-            lines = []
-            while True:
-                try:
-                    line = input("> " if not lines else "  ")
-                    if not line and lines:
-                        break
-                    lines.append(line)
-                except EOFError:
-                    break
-            
-            prompt = "\n".join(lines).strip()
+            click.echo(click.style("(Arrow keys to navigate, Esc+Enter to finish)", fg="white", dim=True))
+            prompt = pt_prompt("> ", multiline=True)
             
             # Return JSON format for i2v
-            return json.dumps({"image": file_path, "prompt": prompt})
+            return json.dumps({"image": file_path, "prompt": prompt.strip()})
         
         return file_path
     
