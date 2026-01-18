@@ -39,6 +39,46 @@ hftool -t t2i -i "A cat" -o cat.png --dry-run
 hftool doctor
 ```
 
+## Docker Support (Recommended for AMD ROCm)
+
+Docker provides isolated ROCm 7.1.1 environment without affecting system drivers (safe for gaming systems).
+
+```bash
+# Interactive setup wizard
+hftool docker setup
+
+# Check hardware and Docker status
+hftool docker status
+
+# Build Docker image for your platform
+hftool docker build
+
+# Run commands in Docker container
+hftool docker run -- -t t2i -i "A cat" -o cat.png
+```
+
+### Docker Files
+
+| File | Purpose |
+|------|---------|
+| `docker/Dockerfile.rocm` | AMD ROCm 7.1.1 + PyTorch 2.9.1 |
+| `docker/Dockerfile.cuda` | NVIDIA CUDA 12.4 |
+| `docker/Dockerfile.cpu` | CPU-only fallback |
+| `docker/docker-compose.yml` | Easy GPU passthrough |
+| `hftool/utils/docker.py` | Hardware detection & Docker utilities |
+
+### Building Docker Images
+
+```bash
+# Build from project root
+docker build -f docker/Dockerfile.rocm -t hftool:rocm --build-arg HFTOOL_VERSION=0.6.0 .
+
+# Or use hftool (auto-passes version)
+hftool docker build
+```
+
+**Note:** Dockerfiles use `SETUPTOOLS_SCM_PRETEND_VERSION` since `.git` is not in Docker context. The version is passed via `--build-arg` from `hftool.__version__`.
+
 ## Architecture
 
 ### Plugin Architecture (Tasks)
@@ -88,6 +128,8 @@ Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`,
 | `tasks/base.py` | Abstract BaseTask class and mixins |
 | `io/interactive_mode.py` | Full interactive wizard (-I flag) |
 | `utils/errors.py` | Error handling with pattern matching |
+| `utils/docker.py` | Docker utilities and hardware detection |
+| `docker/` | Dockerfiles for ROCm, CUDA, CPU |
 
 ## Adding New Models
 
@@ -182,3 +224,4 @@ raise HFToolError("Message", suggestion="How to fix it")
 
 - **ffmpeg**: Required for video/audio processing (system package)
 - **torch**: Users install for their platform (ROCm/CUDA/MPS/CPU)
+- **Docker**: Optional, recommended for AMD ROCm (isolated environment)
