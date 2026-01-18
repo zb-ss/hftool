@@ -11,16 +11,19 @@ from hftool.io.output_handler import save_image
 
 class ImageToImageTask(BaseTask):
     """Handler for image-to-image generation using diffusers.
-    
+
     Supported models:
     - Qwen Image Edit (Qwen/Qwen-Image-Edit-2511) - Advanced editing with multi-image support
+    - FLUX.2 Klein 9B (black-forest-labs/FLUX.2-klein-9B) - Fast multi-reference editing (non-commercial)
     - SDXL Refiner (stabilityai/stable-diffusion-xl-refiner-1.0)
     - SDXL Base img2img (stabilityai/stable-diffusion-xl-base-1.0)
-    
+
     Input format:
     - JSON: {"image": "path/to/image.png", "prompt": "edit description"}
     - JSON with multiple images: {"image": ["path1.png", "path2.png"], "prompt": "combine them"}
     - Or just an image path (will use default prompt)
+
+    For FLUX.2 Klein, reference images in prompt using "image 1", "image 2", etc.
     """
     
     # Model-specific default configurations
@@ -30,6 +33,12 @@ class ImageToImageTask(BaseTask):
             "guidance_scale": 1.0,
             "true_cfg_scale": 4.0,
             "negative_prompt": " ",
+        },
+        "flux2-klein": {
+            "num_inference_steps": 4,
+            "guidance_scale": 1.0,
+            "height": 1024,
+            "width": 1024,
         },
         "refiner": {
             "num_inference_steps": 30,
@@ -180,10 +189,104 @@ class ImageToImageTask(BaseTask):
         # Load the appropriate pipeline based on model type
         click.echo("Loading img2img pipeline...")
         
+        # Check if this is FLUX.2 Klein
+        is_flux2_klein = "flux2-klein" in model_lower or "flux.2-klein" in model_lower
+
         # Check if this is Qwen Image Edit
         is_qwen = "qwen-image-edit" in model_lower or "qwen/qwen-image-edit" in model_lower
-        
-        if is_qwen:
+
+        if is_flux2_klein:
+            click.echo("Using FLUX.2 Klein pipeline...")
+
+            # Check diffusers version
+            import diffusers
+            from packaging import version
+            diffusers_version = version.parse(diffusers.__version__)
+            if diffusers_version < version.parse("0.36.0"):
+                click.echo(
+                    f"Warning: diffusers {diffusers.__version__} detected. "
+                    f"FLUX.2 Klein requires diffusers >= 0.36.0",
+                    err=True
+                )
+                click.echo("Upgrade with: pip install --upgrade diffusers>=0.36.0", err=True)
+
+            # FLUX.2 Klein works best with bfloat16
+            flux_kwargs = {"torch_dtype": torch.bfloat16}
+
+            # For multi-GPU, use device_map with conservative memory limits
+            # Reserve more memory for VAE decode operations
+            if use_multi_gpu and num_gpus > 1:
+                click.echo(f"Multi-GPU mode: Distributing FLUX.2 Klein across {num_gpus} GPUs...")
+                flux_kwargs["device_map"] = "balanced"
+                # Reserve 6GB per GPU for VAE decode and intermediate tensors
+                gpu_max_memory = {}
+                for i in range(num_gpus):
+                    try:
+                        mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+                        gpu_max_memory[i] = f"{int(mem_gb - 6)}GB"  # Reserve 6GB
+                    except Exception:
+                        pass
+                if gpu_max_memory:
+                    flux_kwargs["max_memory"] = gpu_max_memory
+                    click.echo(f"GPU memory allocation: {gpu_max_memory}")
+
+            try:
+                from diffusers import Flux2KleinPipeline
+                pipe = Flux2KleinPipeline.from_pretrained(model, **flux_kwargs)
+
+                # Enable memory optimizations
+                if hasattr(pipe, "enable_vae_slicing"):
+                    pipe.enable_vae_slicing()
+                if hasattr(pipe, "enable_vae_tiling"):
+                    pipe.enable_vae_tiling()
+
+                # Check if device_map was applied
+                has_device_map = hasattr(pipe, "hf_device_map") and pipe.hf_device_map
+                if has_device_map:
+                    click.echo(f"Model distributed: {pipe.hf_device_map}")
+                elif num_gpus > 1:
+                    # device_map didn't work, fall back to model CPU offload
+                    click.echo("device_map not supported, using model CPU offload...")
+                    pipe.enable_model_cpu_offload()
+                else:
+                    # Single GPU - use CPU offload for safety
+                    click.echo("Enabling model CPU offload for FLUX.2 Klein...")
+                    pipe.enable_model_cpu_offload()
+
+                # Return early - pipeline is fully configured
+                return pipe
+            except ImportError:
+                click.echo(
+                    "Flux2KleinPipeline not available. Installing diffusers from main branch...",
+                )
+                # Auto-install diffusers from main branch
+                from hftool.core.download import install_pip_dependencies
+                success = install_pip_dependencies(
+                    ["git+https://github.com/huggingface/diffusers"],
+                    force=True
+                )
+                if success:
+                    click.echo("Diffusers updated. Please restart hftool to use FLUX.2 Klein.")
+                    click.echo("Run the same command again.")
+                    import sys
+                    sys.exit(0)
+                else:
+                    click.echo(
+                        "Error: Failed to install diffusers. Please run manually:\n"
+                        "  pip install git+https://github.com/huggingface/diffusers",
+                        err=True
+                    )
+                    raise
+            except Exception as e:
+                error_msg = str(e)
+                if "gated" in error_msg.lower() or "access" in error_msg.lower():
+                    click.echo(
+                        "Error: FLUX.2-klein-9B requires accepting the license agreement.\n"
+                        "Visit https://huggingface.co/black-forest-labs/FLUX.2-klein-9B to accept the terms.",
+                        err=True
+                    )
+                raise
+        elif is_qwen:
             click.echo("Using Qwen Image Edit pipeline...")
             
             # Check diffusers version - Qwen Image Edit needs >= 0.36.0
@@ -285,6 +388,10 @@ class ImageToImageTask(BaseTask):
     def _is_qwen_pipeline(self, pipeline: Any) -> bool:
         """Check if the pipeline is a Qwen Image Edit pipeline."""
         return "QwenImageEdit" in type(pipeline).__name__
+
+    def _is_flux2_klein_pipeline(self, pipeline: Any) -> bool:
+        """Check if the pipeline is a FLUX.2 Klein pipeline."""
+        return "Flux2Klein" in type(pipeline).__name__
     
     def run_inference(self, pipeline: Any, input_data: Any, **kwargs) -> Any:
         """Run image-to-image inference.
@@ -316,20 +423,25 @@ class ImageToImageTask(BaseTask):
         
         # Load the input image(s)
         is_qwen = self._is_qwen_pipeline(pipeline)
-        
+        is_flux2_klein = self._is_flux2_klein_pipeline(pipeline)
+
         if isinstance(image_paths, list):
-            # Multiple images (Qwen multi-image support)
+            # Multiple images (Qwen/FLUX.2 multi-image support)
             click.echo(f"Loading {len(image_paths)} input images...")
             images = [Image.open(p).convert("RGB") for p in image_paths]
             for i, p in enumerate(image_paths):
-                click.echo(f"  [{i+1}] {p}")
+                click.echo(f"  [image {i+1}] {p}")
+            if is_flux2_klein:
+                click.echo("Tip: Reference images in prompt using 'image 1', 'image 2', etc.")
         else:
             # Single image
             click.echo(f"Loading input image: {image_paths}")
             img = Image.open(image_paths).convert("RGB")
-            # Qwen expects a list even for single images
-            images = [img] if is_qwen else img
-        
+            # Qwen and FLUX.2 Klein expect a list even for single images
+            images = [img] if (is_qwen or is_flux2_klein) else img
+            if is_flux2_klein:
+                click.echo("Tip: Reference this image in prompt using 'image 1' or describe what to edit.")
+
         # Handle seed
         seed = kwargs.pop("seed", None)
         if seed is not None and "generator" not in kwargs:
@@ -337,24 +449,41 @@ class ImageToImageTask(BaseTask):
             if is_qwen:
                 kwargs["generator"] = torch.manual_seed(seed)
             else:
-                device = next(pipeline.unet.parameters()).device if hasattr(pipeline, "unet") else "cpu"
-                kwargs["generator"] = torch.Generator(device=str(device)).manual_seed(seed)
-        
+                # FLUX.2 Klein and others use device-specific generator
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                kwargs["generator"] = torch.Generator(device=device).manual_seed(seed)
+
         # Get model defaults and merge
         defaults = self.get_default_kwargs()
         inference_kwargs = {**defaults, **kwargs}
-        
+
         # Remove any None values
         inference_kwargs = {k: v for k, v in inference_kwargs.items() if v is not None}
-        
+
+        # Filter out incompatible parameters for specific pipelines
+        if is_flux2_klein:
+            # FLUX.2 Klein doesn't use these SDXL parameters
+            for param in ["strength", "negative_prompt", "true_cfg_scale"]:
+                inference_kwargs.pop(param, None)
+        elif is_qwen:
+            # Qwen doesn't use strength
+            inference_kwargs.pop("strength", None)
+
         click.echo(f"Prompt: {prompt or '(none - refining only)'}")
-        
+
         if is_qwen:
             click.echo(f"True CFG Scale: {inference_kwargs.get('true_cfg_scale', 4.0)}")
             click.echo(f"Steps: {inference_kwargs.get('num_inference_steps', 40)}")
+        elif is_flux2_klein:
+            click.echo(f"Steps: {inference_kwargs.get('num_inference_steps', 4)}")
+            click.echo(f"Size: {inference_kwargs.get('width', 1024)}x{inference_kwargs.get('height', 1024)}")
         else:
             click.echo(f"Strength: {inference_kwargs.get('strength', 0.5)}")
         
+        # Clear CUDA cache before inference to maximize available memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         # Run inference with OOM handling
         try:
             with torch.inference_mode():
@@ -367,7 +496,14 @@ class ImageToImageTask(BaseTask):
             if "out of memory" in str(e).lower():
                 click.echo("", err=True)
                 click.echo(click.style("Out of GPU memory!", fg="red"), err=True)
-                click.echo("Try: HFTOOL_CPU_OFFLOAD=1 hftool -t i2i ...", err=True)
+                if is_flux2_klein:
+                    click.echo("FLUX.2 Klein requires significant VRAM for VAE decode.", err=True)
+                    click.echo("Try one of these solutions:", err=True)
+                    click.echo("  1. Lower resolution: Add height=768, width=768 to input", err=True)
+                    click.echo("  2. Use CPU offload: HFTOOL_CPU_OFFLOAD=1 hftool -t i2i ...", err=True)
+                    click.echo("  3. Disable multi-GPU: HFTOOL_MULTI_GPU=0 hftool -t i2i ...", err=True)
+                else:
+                    click.echo("Try: HFTOOL_CPU_OFFLOAD=1 hftool -t i2i ...", err=True)
                 raise
             raise
         

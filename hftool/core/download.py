@@ -48,30 +48,28 @@ def get_model_path(repo_id: str) -> Path:
 
 
 def is_model_downloaded(repo_id: str) -> bool:
-    """Check if a model has been downloaded.
-    
+    """Check if a model has been downloaded completely.
+
     Args:
         repo_id: HuggingFace repository ID
-    
+
     Returns:
-        True if model exists locally
+        True if model exists locally with required config files
     """
     model_path = get_model_path(repo_id)
-    
+
     if not model_path.exists():
         return False
-    
-    # Check for common model files
+
+    # Check for common model files - at least one must exist for a valid download
     config_files = ["config.json", "model_index.json", "tokenizer_config.json"]
     for config_file in config_files:
         if (model_path / config_file).exists():
             return True
-    
-    # Check if directory has any files
-    try:
-        return any(model_path.iterdir())
-    except OSError:
-        return False
+
+    # Directory exists but no config files = incomplete download
+    # Return False so it will be re-downloaded
+    return False
 
 
 def get_download_status(repo_id: str) -> str:
@@ -130,6 +128,34 @@ def get_partial_downloads() -> List[Dict[str, str]]:
     return partial
 
 
+def get_hf_token() -> Optional[str]:
+    """Get HuggingFace token for authentication.
+
+    Checks in order:
+    1. HF_TOKEN environment variable
+    2. HUGGINGFACE_TOKEN environment variable
+    3. huggingface_hub cached token (from `huggingface-cli login`)
+
+    Returns:
+        Token string or None if not found
+    """
+    # Check environment variables first
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
+    if token:
+        return token
+
+    # Check huggingface_hub cached token
+    try:
+        from huggingface_hub import HfFolder
+        token = HfFolder.get_token()
+        if token:
+            return token
+    except Exception:
+        pass
+
+    return None
+
+
 def download_model(
     repo_id: str,
     revision: Optional[str] = None,
@@ -139,7 +165,7 @@ def download_model(
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> Path:
     """Download a model from HuggingFace Hub.
-    
+
     Args:
         repo_id: HuggingFace repository ID
         revision: Specific revision/commit to download
@@ -147,13 +173,17 @@ def download_model(
         force: Re-download even if already exists
         resume: Resume partial downloads (default: True)
         progress_callback: Optional callback for progress updates (current, total)
-    
+
     Returns:
         Path to downloaded model
-    
+
     Raises:
         ImportError: If huggingface_hub is not installed
         Exception: If download fails
+
+    Authentication:
+        For gated models (requiring license acceptance), set HF_TOKEN environment
+        variable or run `huggingface-cli login` first.
     """
     try:
         from huggingface_hub import snapshot_download
@@ -162,16 +192,16 @@ def download_model(
             "huggingface_hub is required for downloading models. "
             "Install with: pip install huggingface_hub"
         )
-    
+
     model_path = get_model_path(repo_id)
-    
+
     # Check if already downloaded
     if not force and is_model_downloaded(repo_id):
         return model_path
-    
+
     # Create models directory
     model_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Set up ignore patterns
     patterns = ignore_patterns or []
     # Only ignore root-level documentation files
@@ -183,42 +213,65 @@ def download_model(
         ".gitattributes",
     ]
     patterns.extend(default_ignores)
-    
-    # Download with huggingface_hub
-    # resume_download is enabled by default in huggingface_hub
-    downloaded_path = snapshot_download(
-        repo_id=repo_id,
-        revision=revision,
-        local_dir=str(model_path),
-        ignore_patterns=patterns if patterns else None,
-        resume_download=resume,  # Enable resume capability
-    )
-    
+
+    # Get authentication token for gated models
+    token = get_hf_token()
+
+    try:
+        # Download with huggingface_hub
+        # resume_download is enabled by default in huggingface_hub
+        downloaded_path = snapshot_download(
+            repo_id=repo_id,
+            revision=revision,
+            local_dir=str(model_path),
+            ignore_patterns=patterns if patterns else None,
+            resume_download=resume,  # Enable resume capability
+            token=token,  # Pass token for gated models
+        )
+    except Exception as e:
+        error_str = str(e).lower()
+        # Check for gated model access errors
+        if any(x in error_str for x in ["gated", "access", "401", "403", "forbidden", "unauthorized"]):
+            raise RuntimeError(
+                f"Access denied to gated model: {repo_id}\n\n"
+                f"This model requires accepting the license agreement and authentication.\n\n"
+                f"To fix this:\n"
+                f"  1. Visit https://huggingface.co/{repo_id} and accept the license terms\n"
+                f"  2. Create an access token at https://huggingface.co/settings/tokens\n"
+                f"  3. Run: huggingface-cli login\n"
+                f"     Or set: export HF_TOKEN=your_token_here\n"
+            ) from e
+        raise
+
     return Path(downloaded_path)
 
 
 def check_dependency_satisfied(dep: str) -> bool:
     """Check if a dependency requirement is already satisfied.
-    
+
     Args:
-        dep: Dependency spec like "diffusers>=0.36.0"
-    
+        dep: Dependency spec like "diffusers>=0.36.0" or git URL
+
     Returns:
         True if requirement is satisfied
     """
+    # Git URLs can't be version-checked, always return False to force install
+    if dep.startswith("git+") or dep.startswith("https://"):
+        return False
+
     try:
         from packaging.requirements import Requirement
         from packaging.version import Version
         import importlib.metadata
-        
+
         req = Requirement(dep)
         try:
             installed_version = Version(importlib.metadata.version(req.name))
             return installed_version in req.specifier
         except importlib.metadata.PackageNotFoundError:
             return False
-    except ImportError:
-        # packaging not available, assume not satisfied to be safe
+    except (ImportError, Exception):
+        # packaging not available or parse error, assume not satisfied to be safe
         return False
 
 
@@ -402,16 +455,18 @@ def prompt_download(
     task_name: str,
     model_name: str,
     pip_dependencies: Optional[List[str]] = None,
+    gated: bool = False,
 ) -> Optional[Path]:
     """Prompt user to download a model interactively.
-    
+
     Args:
         repo_id: HuggingFace repository ID
         size_gb: Approximate size in GB
         task_name: Task name for display
         model_name: Model name for display
         pip_dependencies: Additional pip packages to install
-    
+        gated: Whether the model requires license acceptance and HF token
+
     Returns:
         Path to downloaded model, or None if user cancelled
     """
@@ -427,8 +482,34 @@ def prompt_download(
     click.echo(f"  Location: {get_model_path(repo_id)}")
     if pip_dependencies:
         click.echo(f"  Requires: {', '.join(pip_dependencies)}")
+
+    # Show gated model warning and check for token
+    if gated:
+        click.echo("")
+        click.echo(click.style("  ⚠ GATED MODEL - Requires authentication", fg="yellow"))
+
+        token = get_hf_token()
+        if token:
+            click.echo(click.style("  ✓ HuggingFace token found", fg="green"))
+        else:
+            click.echo(click.style("  ✗ No HuggingFace token found", fg="red"))
+            click.echo("")
+            click.echo("  This model requires:")
+            click.echo(f"    1. Accept license at: https://huggingface.co/{repo_id}")
+            click.echo("    2. Login with: huggingface-cli login")
+            click.echo("       Or set: export HF_TOKEN=your_token_here")
+            click.echo("")
+
+            if not click.confirm("Continue anyway?", default=False):
+                click.echo("")
+                click.echo("To authenticate:")
+                click.echo("  1. Create a token at https://huggingface.co/settings/tokens")
+                click.echo("  2. Run: huggingface-cli login")
+                click.echo(f"  3. Then retry: hftool download -t {task_name}")
+                return None
+
     click.echo("")
-    
+
     try:
         if click.confirm("Download this model now?", default=True):
             return download_model_with_progress(
@@ -455,9 +536,10 @@ def ensure_model_available(
     model_name: str,
     auto_download: bool = False,
     pip_dependencies: Optional[List[str]] = None,
+    gated: bool = False,
 ) -> Path:
     """Ensure a model is available, prompting to download if needed.
-    
+
     Args:
         repo_id: HuggingFace repository ID
         size_gb: Approximate size in GB
@@ -465,10 +547,11 @@ def ensure_model_available(
         model_name: Model name for display
         auto_download: If True, download without prompting
         pip_dependencies: Additional pip packages to install
-    
+        gated: Whether the model requires license acceptance and HF token
+
     Returns:
         Path to model
-    
+
     Raises:
         SystemExit: If model not available and user cancelled download
     """
@@ -478,21 +561,31 @@ def ensure_model_available(
         if pip_dependencies:
             install_pip_dependencies(pip_dependencies)
         return get_model_path(repo_id)
-    
+
     # Check environment variable for auto-download behavior
     auto_env = os.environ.get("HFTOOL_AUTO_DOWNLOAD", "").lower()
     if auto_env in ("1", "true", "yes"):
         auto_download = True
     elif auto_env in ("0", "false", "no"):
         auto_download = False
-    
+
+    # For gated models with auto-download, check for token first
+    if auto_download and gated:
+        token = get_hf_token()
+        if not token:
+            click.echo(click.style("Warning: Gated model requires HuggingFace authentication.", fg="yellow"))
+            click.echo(f"  Run: huggingface-cli login")
+            click.echo(f"  Or set: export HF_TOKEN=your_token_here")
+            click.echo(f"  Accept license at: https://huggingface.co/{repo_id}")
+            click.echo("")
+
     if auto_download:
         return download_model_with_progress(
             repo_id=repo_id,
             size_gb=size_gb,
             pip_dependencies=pip_dependencies,
         )
-    
+
     # Interactive prompt
     result = prompt_download(
         repo_id=repo_id,
@@ -500,8 +593,9 @@ def ensure_model_available(
         task_name=task_name,
         model_name=model_name,
         pip_dependencies=pip_dependencies,
+        gated=gated,
     )
-    
+
     if result is None:
         # User cancelled - provide helpful instructions
         click.echo("")
@@ -511,9 +605,14 @@ def ensure_model_available(
         click.echo(f"  1. Run: hftool download -t {task_name}")
         click.echo(f"  2. Set HFTOOL_AUTO_DOWNLOAD=1 to auto-download")
         click.echo(f"  3. Use a custom model path with -m /path/to/model")
+        if gated:
+            click.echo("")
+            click.echo("For gated models, also ensure you have:")
+            click.echo(f"  - Accepted the license at https://huggingface.co/{repo_id}")
+            click.echo("  - Run: huggingface-cli login")
         click.echo("")
         sys.exit(1)
-    
+
     return result
 
 

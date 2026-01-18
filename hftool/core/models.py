@@ -18,37 +18,40 @@ class ModelType(Enum):
 @dataclass
 class ModelInfo:
     """Information about a downloadable model."""
-    
+
     # HuggingFace repository ID (e.g., "openai/whisper-large-v3")
     repo_id: str
-    
+
     # Human-readable name
     name: str
-    
+
     # Model type (diffusers, transformers, custom)
     model_type: ModelType
-    
+
     # Approximate size in GB (for user information)
     size_gb: float
-    
+
     # Whether this is the default model for the task
     is_default: bool = False
-    
+
     # Short description
     description: str = ""
-    
+
     # Specific revision/commit to download (optional)
     revision: Optional[str] = None
-    
+
     # Files to exclude from download (to reduce size)
     ignore_patterns: List[str] = field(default_factory=list)
-    
+
     # Additional pip packages required for this model
     # Will be installed when model is downloaded/used
     pip_dependencies: List[str] = field(default_factory=list)
-    
+
     # Additional metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # Whether model is gated (requires license acceptance and HF token)
+    gated: bool = False
     
     @property
     def short_name(self) -> str:
@@ -147,6 +150,20 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
                 "guidance_scale": 1.0,
                 "true_cfg_scale": 4.0,
                 "pipeline_class": "QwenImageEditPlusPipeline",
+            },
+        ),
+        "flux2-klein": ModelInfo(
+            repo_id="black-forest-labs/FLUX.2-klein-9B",
+            name="FLUX.2 Klein 9B",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=29.0,
+            description="Fast FLUX.2 image editing with multi-reference support (4 steps, non-commercial)",
+            pip_dependencies=["git+https://github.com/huggingface/diffusers"],  # Requires main branch
+            gated=True,  # Requires license acceptance and HF token
+            metadata={
+                "num_inference_steps": 4,
+                "guidance_scale": 1.0,
+                "pipeline_class": "Flux2KleinPipeline",
             },
         ),
         "sdxl-refiner": ModelInfo(
