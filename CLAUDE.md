@@ -118,6 +118,23 @@ Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`,
 3. Add models to `hftool/core/models.py`
 4. Add tests in `tests/`
 
+## Version Bumping
+
+**Always bump the version when adding features or fixing bugs.** Version is defined in `hftool/__init__.py`.
+
+Follow [Semantic Versioning](https://semver.org/):
+- **MAJOR** (X.0.0): Breaking changes to CLI interface or API
+- **MINOR** (0.X.0): New features (new models, new tasks, new CLI options)
+- **PATCH** (0.0.X): Bug fixes, documentation updates, internal refactors
+
+Examples:
+- Adding a new model → bump MINOR (0.4.1 → 0.5.0)
+- Adding a new task → bump MINOR
+- Fixing a bug → bump PATCH (0.4.1 → 0.4.2)
+- Breaking CLI change → bump MAJOR
+
+**Bump version in the same commit as the feature/fix, not separately.**
+
 ## Code Style
 
 - Python 3.10+ with type hints required
