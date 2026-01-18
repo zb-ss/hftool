@@ -184,6 +184,72 @@ def save_audio(
     return output_path
 
 
+def _convert_frame_to_pil(frame: Any, frame_index: int = 0) -> "Image.Image":
+    """Convert a frame to PIL Image.
+    
+    Handles numpy arrays, torch tensors, and PIL Images.
+    Normalizes array values to 0-255 uint8 range.
+    
+    Args:
+        frame: Frame data (PIL Image, numpy array, or torch tensor)
+        frame_index: Frame index for error messages
+    
+    Returns:
+        PIL Image in RGB mode
+    """
+    from PIL import Image
+    import numpy as np
+    
+    # Handle torch tensors
+    if hasattr(frame, "cpu"):
+        frame = frame.cpu().numpy()
+    
+    # Handle numpy arrays
+    if isinstance(frame, np.ndarray):
+        # Normalize to uint8 if needed
+        if frame.dtype == np.float32 or frame.dtype == np.float64:
+            # Check range: if values are in [0, 1], scale to [0, 255]
+            frame_min = float(frame.min())
+            frame_max = float(frame.max())
+            
+            if frame_max <= 1.0 and frame_min >= 0.0:
+                frame = (frame * 255).astype(np.uint8)
+            elif frame_max <= 1.0 and frame_min >= -1.0:
+                # Range [-1, 1] -> [0, 255]
+                frame = ((frame + 1) * 127.5).astype(np.uint8)
+            else:
+                # Arbitrary range, normalize to [0, 255]
+                frame = ((frame - frame_min) / (frame_max - frame_min + 1e-8) * 255).astype(np.uint8)
+        elif frame.dtype != np.uint8:
+            frame = frame.astype(np.uint8)
+        
+        # Handle different array shapes
+        if frame.ndim == 4:
+            # Batch dimension: (B, H, W, C) or (B, C, H, W)
+            frame = frame[0]
+        
+        if frame.ndim == 3:
+            # Check if channels-first (C, H, W) or channels-last (H, W, C)
+            if frame.shape[0] in (1, 3, 4) and frame.shape[2] not in (1, 3, 4):
+                # Likely channels-first, transpose to (H, W, C)
+                frame = np.transpose(frame, (1, 2, 0))
+            
+            # Handle single channel
+            if frame.shape[2] == 1:
+                frame = np.squeeze(frame, axis=2)
+        
+        frame = Image.fromarray(frame)
+    
+    if not isinstance(frame, Image.Image):
+        raise ValueError(f"Cannot convert frame {frame_index} of type {type(frame).__name__} to image")
+    
+    # Convert to RGB if needed
+    if frame.mode != "RGB":
+        frame = frame.convert("RGB")
+    
+    return frame
+
+
 def save_video(
     frames: List[Any],
     output_path: str,
@@ -226,20 +292,10 @@ def save_video(
     with tempfile.TemporaryDirectory() as tmpdir:
         # Save frames as images
         for i, frame in enumerate(frames):
-            # Convert to PIL Image if needed
-            if not isinstance(frame, Image.Image):
-                try:
-                    import numpy as np
-                    if isinstance(frame, np.ndarray):
-                        frame = Image.fromarray(frame)
-                    elif hasattr(frame, "cpu"):  # torch tensor
-                        frame = Image.fromarray(frame.cpu().numpy())
-                except Exception as e:
-                    raise ValueError(f"Cannot convert frame {i} to image: {e}")
-            
-            # Ensure RGB mode
-            if frame.mode != "RGB":
-                frame = frame.convert("RGB")
+            try:
+                frame = _convert_frame_to_pil(frame, i)
+            except Exception as e:
+                raise ValueError(f"Cannot convert frame {i} to image: {e}")
             
             frame.save(os.path.join(tmpdir, f"frame_{i:06d}.png"))
         

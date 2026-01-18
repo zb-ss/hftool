@@ -68,6 +68,7 @@ with_t2v = [
     "diffusers>=0.36.0",
     "Pillow>=9.0.0",
     "accelerate>=0.26.0",
+    "ftfy>=6.0.0",  # Text cleaning for Wan2.2 and other models
 ]
 
 # Text-to-Speech (Bark, MMS-TTS)
@@ -132,6 +133,8 @@ all = [
     # Diffusers (T2I, I2I, T2V) - 0.36.0+ for QwenImageEditPlusPipeline
     "diffusers>=0.36.0",
     "accelerate>=0.26.0",
+    # Text cleaning (for Wan2.2 and other T2V models)
+    "ftfy>=6.0.0",
     # Tokenizers (protobuf for T5, sentencepiece for various)
     "protobuf>=3.20.0",
     "sentencepiece>=0.1.99",

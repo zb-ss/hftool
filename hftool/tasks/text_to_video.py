@@ -353,7 +353,8 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         if hasattr(result, "frames"):
             frames = result.frames
             # Some pipelines return nested list: [[frame1, frame2, ...]]
-            if frames and isinstance(frames[0], list):
+            # Use len() check instead of bool(frames) to avoid numpy array ambiguity
+            if isinstance(frames, list) and len(frames) > 0 and isinstance(frames[0], list):
                 frames = frames[0]
         elif hasattr(result, "images"):
             frames = result.images

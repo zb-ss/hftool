@@ -230,6 +230,7 @@ def process_batch(
             size_gb=model_info.size_gb if model_info else 5.0,
             task_name=resolved_task,
             model_name=model or "default",
+            gated=getattr(model_info, 'gated', False) if model_info else False,
         )
         model_to_load = str(model_path)
     else:

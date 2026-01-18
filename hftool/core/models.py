@@ -18,37 +18,40 @@ class ModelType(Enum):
 @dataclass
 class ModelInfo:
     """Information about a downloadable model."""
-    
+
     # HuggingFace repository ID (e.g., "openai/whisper-large-v3")
     repo_id: str
-    
+
     # Human-readable name
     name: str
-    
+
     # Model type (diffusers, transformers, custom)
     model_type: ModelType
-    
+
     # Approximate size in GB (for user information)
     size_gb: float
-    
+
     # Whether this is the default model for the task
     is_default: bool = False
-    
+
     # Short description
     description: str = ""
-    
+
     # Specific revision/commit to download (optional)
     revision: Optional[str] = None
-    
+
     # Files to exclude from download (to reduce size)
     ignore_patterns: List[str] = field(default_factory=list)
-    
+
     # Additional pip packages required for this model
     # Will be installed when model is downloaded/used
     pip_dependencies: List[str] = field(default_factory=list)
-    
+
     # Additional metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # Whether model is gated (requires license acceptance and HF token)
+    gated: bool = False
     
     @property
     def short_name(self) -> str:
@@ -149,6 +152,20 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
                 "pipeline_class": "QwenImageEditPlusPipeline",
             },
         ),
+        "flux2-klein": ModelInfo(
+            repo_id="black-forest-labs/FLUX.2-klein-9B",
+            name="FLUX.2 Klein 9B",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=29.0,
+            description="Fast FLUX.2 image editing with multi-reference support (4 steps, non-commercial)",
+            pip_dependencies=["git+https://github.com/huggingface/diffusers"],  # Requires main branch
+            gated=True,  # Requires license acceptance and HF token
+            metadata={
+                "num_inference_steps": 4,
+                "guidance_scale": 1.0,
+                "pipeline_class": "Flux2KleinPipeline",
+            },
+        ),
         "sdxl-refiner": ModelInfo(
             repo_id="stabilityai/stable-diffusion-xl-refiner-1.0",
             name="SDXL Refiner",
@@ -207,6 +224,24 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             size_gb=28.0,
             description="High-quality Wan text-to-video model",
         ),
+        "wan2.2-14b": ModelInfo(
+            repo_id="Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+            name="Wan 2.2 (A14B MoE)",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=55.0,
+            description="Wan 2.2 MoE text-to-video (27B total, 14B active)",
+            metadata={"num_inference_steps": 50, "guidance_scale": 5.0},
+            pip_dependencies=["ftfy>=6.0.0"],
+        ),
+        "wan2.2-5b": ModelInfo(
+            repo_id="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+            name="Wan 2.2 TI2V (5B)",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=12.0,
+            description="Wan 2.2 efficient T2V+I2V model (720P@24fps)",
+            metadata={"num_inference_steps": 50, "guidance_scale": 5.0},
+            pip_dependencies=["ftfy>=6.0.0"],
+        ),
     },
     
     # =========================================================================
@@ -227,6 +262,24 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             model_type=ModelType.DIFFUSERS,
             size_gb=20.0,
             description="CogVideo image-to-video model",
+        ),
+        "wan2.2-14b-i2v": ModelInfo(
+            repo_id="Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+            name="Wan 2.2 I2V (A14B MoE)",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=55.0,
+            description="Wan 2.2 MoE image-to-video (27B total, 14B active)",
+            metadata={"num_inference_steps": 50, "guidance_scale": 5.0},
+            pip_dependencies=["ftfy>=6.0.0"],
+        ),
+        "wan2.2-5b-i2v": ModelInfo(
+            repo_id="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+            name="Wan 2.2 TI2V (5B) I2V",
+            model_type=ModelType.DIFFUSERS,
+            size_gb=12.0,
+            description="Wan 2.2 efficient I2V model (720P@24fps)",
+            metadata={"num_inference_steps": 50, "guidance_scale": 5.0},
+            pip_dependencies=["ftfy>=6.0.0"],
         ),
     },
     

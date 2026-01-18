@@ -14,7 +14,7 @@ A CLI for running HuggingFace models, optimized for AMD ROCm.
 
 ### AI Tasks
 - **Text-to-Image**: Z-Image-Turbo, Stable Diffusion XL, FLUX
-- **Image-to-Image**: Qwen Image Edit (advanced editing with multi-image support), SDXL Refiner
+- **Image-to-Image**: Qwen Image Edit (advanced editing with multi-image support), FLUX.2 Klein (fast multi-ref), SDXL Refiner
 - **Text-to-Video**: HunyuanVideo-1.5, CogVideoX, Wan2.2
 - **Text-to-Speech**: Bark, MMS-TTS, GLM-TTS
 - **Speech-to-Text**: Whisper (with timestamps and SRT export)
@@ -139,15 +139,23 @@ pip install -e ".[dev]"  # Includes pytest
 ```bash
 # Install hftool
 pipx install hftool[all]
+```
 
-# Then inject the correct PyTorch for your platform:
-# NVIDIA:
+**Important for AMD GPU users:** The install above pulls in CUDA PyTorch by default. Replace it with ROCm PyTorch:
+
+```bash
+# AMD ROCm - uninstall CUDA version and install ROCm version:
+pipx runpip hftool uninstall torch torchvision torchaudio -y
+pipx runpip hftool install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+```
+
+For other platforms:
+```bash
+# NVIDIA (already installed by default, but to reinstall):
 pipx runpip hftool install torch torchvision torchaudio
 
-# AMD ROCm:
-pipx runpip hftool install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
-
 # CPU only:
+pipx runpip hftool uninstall torch torchvision torchaudio -y
 pipx runpip hftool install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 ```
 
@@ -672,6 +680,44 @@ HFTOOL_DEBUG=0          # Set to 1 to show all warnings
 
 hftool automatically loads `.env` files on startup.
 
+### Gated Models (Authentication Required)
+
+Some models like FLUX.2-klein-9B require accepting a license agreement and HuggingFace authentication:
+
+```bash
+# Option 1: Login with huggingface-cli (recommended)
+pip install huggingface_hub
+huggingface-cli login
+# Follow prompts to enter your token
+
+# Option 2: Set environment variable
+export HF_TOKEN=your_token_here
+
+# Option 3: Add to .env file
+echo "HF_TOKEN=your_token_here" >> ~/.hftool/.env
+```
+
+**Steps for gated models:**
+1. Visit the model page (e.g., https://huggingface.co/black-forest-labs/FLUX.2-klein-9B)
+2. Accept the license agreement
+3. Create an access token at https://huggingface.co/settings/tokens
+4. Login with `huggingface-cli login` or set `HF_TOKEN`
+
+hftool will automatically detect your token and show a warning if authentication is missing for gated models.
+
+**Important: Token permissions for gated repos**
+
+If you get errors like "cannot find the requested files" or "check your internet connection" when downloading gated models, your token may lack the required permissions.
+
+When creating your token at https://huggingface.co/settings/tokens:
+- **Recommended**: Use a **"Read"** token (classic type) - works with all repos
+- **Fine-grained tokens**: Must have "Access to public gated repos" enabled
+
+To check/fix your token:
+1. Go to https://huggingface.co/settings/tokens
+2. Click on your token to view its permissions
+3. Ensure it has access to gated repositories
+
 ### Debug Mode and Logging
 
 By default, hftool suppresses noisy warnings from dependencies (torch, diffusers, transformers). To see all warnings for debugging:
@@ -782,7 +828,7 @@ hftool -t t2i -m Tongyi-MAI/Z-Image-Turbo \
 
 ### Image-to-Image
 
-Transform existing images with Qwen Image Edit (default) or SDXL:
+Transform existing images with Qwen Image Edit (default), FLUX.2 Klein, or SDXL:
 
 ```bash
 # Basic image editing with Qwen Image Edit (default)
@@ -801,6 +847,17 @@ hftool -t i2i \
        -o renaissance.png \
        -- --seed 42 --true_cfg_scale 4.0 --num_inference_steps 50
 
+# FLUX.2 Klein - fast multi-reference editing (sub-second generation)
+hftool -t i2i -m flux2-klein \
+       -i '{"image": "person.jpg", "prompt": "the person from image 1 as an astronaut on Mars"}' \
+       -o astronaut.png
+
+# FLUX.2 Klein with multiple reference images
+hftool -t i2i -m flux2-klein \
+       -i '{"image": ["cat.jpg", "dog.jpg"], "prompt": "the cat from image 1 and dog from image 2 playing together"}' \
+       -o pets.png \
+       -- --seed 42
+
 # Style transfer with SDXL Refiner (smaller model, faster)
 hftool -t i2i -m sdxl-refiner \
        -i '{"image": "landscape.jpg", "prompt": "professional photography, enhanced colors"}' \
@@ -810,6 +867,7 @@ hftool -t i2i -m sdxl-refiner \
 
 **Supported models:**
 - `Qwen/Qwen-Image-Edit-2511` (default, 25 GB) - Advanced editing with character consistency, multi-image support
+- `black-forest-labs/FLUX.2-klein-9B` (29 GB) - Fast multi-reference editing in 4 steps (**non-commercial license**)
 - `stabilityai/stable-diffusion-xl-refiner-1.0` (6.2 GB) - Fast refinement and subtle changes
 - `stabilityai/stable-diffusion-xl-base-1.0` (6.5 GB) - Stronger style transfer
 
@@ -824,6 +882,23 @@ hftool -t i2i -m sdxl-refiner \
 | `--num_inference_steps` | 40 | Number of denoising steps |
 | `--guidance_scale` | 1.0 | Standard CFG guidance scale |
 | `--negative_prompt` | " " | What to avoid in generation |
+
+**FLUX.2 Klein parameters** (pass after `--`):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--seed` | random | Random seed for reproducibility |
+| `--num_inference_steps` | 4 | Number of denoising steps (optimized for 4) |
+| `--guidance_scale` | 1.0 | CFG guidance scale |
+| `--height` | 1024 | Output image height |
+| `--width` | 1024 | Output image width |
+
+**FLUX.2 Klein tips:**
+- Reference images in prompts using "image 1", "image 2", etc.
+- Supports up to 10 reference images per generation
+- Requires ~29GB VRAM (RTX 4090 and above)
+- **Non-commercial license** - requires accepting terms at HuggingFace
+- Requires diffusers from main branch (auto-installed on first use)
 
 **SDXL Refiner/Base parameters**:
 
@@ -1035,6 +1110,7 @@ Commands:
 | `HFTOOL_AUTO_OPEN` | Auto-open output files | `auto` (media files only) |
 | `HFTOOL_ROCM_PATH` | Path to ROCm libraries (e.g., Ollama's bundled ROCm) | (none) |
 | `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture override (e.g., `11.0.0` for RX 7900) | (none) |
+| `HF_TOKEN` | HuggingFace token for gated models | (none) |
 
 ### Passing Model-Specific Arguments
 
@@ -1057,6 +1133,7 @@ hftool is optimized for AMD GPUs with ROCm 6.x:
 |------|-------|---------------|-------|
 | Text-to-Image | Z-Image-Turbo | ~10-12 GB | Comfortable on RX 7900 XTX |
 | Image-to-Image | Qwen Image Edit | ~20-24 GB | Use CPU offload on 24GB cards |
+| Image-to-Image | FLUX.2 Klein | ~29 GB | RTX 4090+, non-commercial |
 | Image-to-Image | SDXL Refiner | ~8-10 GB | Fast, lower VRAM |
 | Text-to-Video | HunyuanVideo 480p | ~20-24 GB | Use CPU offload |
 | Text-to-Video | HunyuanVideo 720p | ~30-40 GB | Requires multi-GPU |

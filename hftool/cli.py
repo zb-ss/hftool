@@ -2098,7 +2098,8 @@ def _run_task_command(
         # Determine which model to use
         model_info = None
         pip_dependencies = None
-        
+        model_gated = False
+
         if model is None:
             # Use default model
             model_info = get_default_model_info(resolved_task)
@@ -2106,6 +2107,7 @@ def _run_task_command(
             model_size = model_info.size_gb
             model_name = model_info.name
             pip_dependencies = model_info.pip_dependencies
+            model_gated = getattr(model_info, 'gated', False)
         else:
             # Check if model is a local path
             if os.path.exists(model):
@@ -2120,17 +2122,18 @@ def _run_task_command(
                     model_size = model_info.size_gb
                     model_name = model_info.name
                     pip_dependencies = model_info.pip_dependencies
+                    model_gated = getattr(model_info, 'gated', False)
                 except ValueError:
                     # Not in registry - assume it's a HuggingFace repo_id
                     model_repo_id = model
                     model_size = 5.0  # Estimate
                     model_name = model.split("/")[-1] if "/" in model else model
-        
+
         if verbose:
             click.echo(f"Using model: {model_repo_id}")
             if pip_dependencies:
                 click.echo(f"Model dependencies: {', '.join(pip_dependencies)}")
-        
+
         # Ensure model is available (prompts to download if needed)
         if not os.path.exists(model_repo_id):
             model_path = ensure_model_available(
@@ -2139,6 +2142,7 @@ def _run_task_command(
                 task_name=resolved_task,
                 model_name=model_name,
                 pip_dependencies=pip_dependencies,
+                gated=model_gated,
             )
             # Use the local path for loading
             model_to_load = str(model_path)
