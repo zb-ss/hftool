@@ -53,9 +53,12 @@ COPY pyproject.toml README.md ./
 COPY hftool/ ./hftool/
 
 # Set version for setuptools-scm (no .git in Docker context)
-ARG HFTOOL_VERSION=0.6.0
+ARG HFTOOL_VERSION=0.5.0
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${HFTOOL_VERSION}
 ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_HFTOOL=${HFTOOL_VERSION}
+
+# Write version file directly to bypass setuptools-scm entirely
+RUN echo "__version__ = '${HFTOOL_VERSION}'" > hftool/_version.py
 
 # Install hftool with all optional dependencies
 # --no-build-isolation ensures env vars are passed to the build
