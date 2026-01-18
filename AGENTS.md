@@ -21,6 +21,14 @@
 
 Docker provides isolated ROCm 7.1.1 environment without affecting system drivers.
 
+## Version Bumping Checklist
+When bumping the version, update ALL of these files:
+- `hftool/__init__.py` → `__version__ = "X.Y.Z"`
+- `pyproject.toml` → `fallback_version = "X.Y.Z"`
+- `docker/Dockerfile.rocm` → `ARG HFTOOL_VERSION=X.Y.Z`
+- `docker/Dockerfile.cuda` → `ARG HFTOOL_VERSION=X.Y.Z`
+- `docker/Dockerfile.cpu` → `ARG HFTOOL_VERSION=X.Y.Z`
+
 ## New Features (v0.3.0+)
 
 ### Phase 1 Features

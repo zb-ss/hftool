@@ -71,7 +71,7 @@ hftool docker run -- -t t2i -i "A cat" -o cat.png
 
 ```bash
 # Build from project root
-docker build -f docker/Dockerfile.rocm -t hftool:rocm --build-arg HFTOOL_VERSION=0.6.0 .
+docker build -f docker/Dockerfile.rocm -t hftool:rocm --build-arg HFTOOL_VERSION=0.5.0 .
 
 # Or use hftool (auto-passes version)
 hftool docker build
@@ -162,7 +162,17 @@ Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`,
 
 ## Version Bumping
 
-**Always bump the version when adding features or fixing bugs.** Version is defined in `hftool/__init__.py`.
+**Always bump the version when adding features or fixing bugs.**
+
+### Files to Update (ALL of these must match):
+
+| File | Location |
+|------|----------|
+| `hftool/__init__.py` | `__version__ = "X.Y.Z"` |
+| `pyproject.toml` | `fallback_version = "X.Y.Z"` (in `[tool.setuptools_scm]`) |
+| `docker/Dockerfile.rocm` | `ARG HFTOOL_VERSION=X.Y.Z` |
+| `docker/Dockerfile.cuda` | `ARG HFTOOL_VERSION=X.Y.Z` |
+| `docker/Dockerfile.cpu` | `ARG HFTOOL_VERSION=X.Y.Z` |
 
 Follow [Semantic Versioning](https://semver.org/):
 - **MAJOR** (X.0.0): Breaking changes to CLI interface or API
