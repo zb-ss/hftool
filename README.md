@@ -39,7 +39,36 @@ Works on **AMD ROCm**, NVIDIA CUDA, Apple MPS, and CPU.
 
 ## Installation
 
-### Quick Install
+### Quick Install (Docker - Recommended)
+
+The easiest way to install hftool with full GPU support:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zb-ss/hftool/master/install.sh | bash
+```
+
+This one-liner will:
+- Detect your GPU (AMD ROCm, NVIDIA CUDA, or CPU)
+- Build a Docker image with all dependencies pre-configured
+- Create a wrapper at `~/.local/bin/hftool`
+
+**Options:**
+```bash
+# Force specific platform
+curl -fsSL https://raw.githubusercontent.com/zb-ss/hftool/master/install.sh | bash -s -- --platform rocm
+
+# Custom install directory
+curl -fsSL https://raw.githubusercontent.com/zb-ss/hftool/master/install.sh | bash -s -- --install-dir /usr/local/bin
+```
+
+**Benefits:**
+- ROCm 7.1.1 isolated from system (won't affect gaming drivers)
+- All dependencies pre-installed (no pip conflicts)
+- Works on any Linux with Docker
+
+---
+
+### pip Install
 
 ```bash
 pip install hftool
@@ -158,6 +187,48 @@ pipx runpip hftool install torch torchvision torchaudio
 pipx runpip hftool uninstall torch torchvision torchaudio -y
 pipx runpip hftool install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 ```
+
+### Docker Install (Recommended for AMD ROCm)
+
+Docker provides the easiest way to use hftool with full GPU support, especially for AMD users who want to keep their system clean for gaming.
+
+**Option 1: One-liner install (recommended)**
+```bash
+curl -fsSL https://raw.githubusercontent.com/zb-ss/hftool/master/install.sh | bash
+```
+
+**Option 2: Manual setup via pip**
+```bash
+# Install hftool (thin CLI wrapper)
+pip install hftool
+
+# Run the setup wizard
+hftool docker setup
+```
+
+The setup wizard will:
+1. Detect your GPU (AMD ROCm, NVIDIA CUDA, or CPU)
+2. Build a Docker image with all dependencies pre-configured
+3. Configure hftool to run commands in the container automatically
+
+**Benefits of Docker mode:**
+- ROCm 7.1.1 isolated from system (won't affect gaming drivers)
+- All dependencies pre-installed (no pip conflicts)
+- Works on any Linux with Docker and AMD GPU
+
+**Manual Docker commands:**
+```bash
+# Check Docker status
+hftool docker status
+
+# Build the image manually
+hftool docker build
+
+# Run commands explicitly in Docker
+hftool docker run -- -t t2i -i "A cat" -o cat.png
+```
+
+See [docker/README.md](docker/README.md) for detailed Docker documentation.
 
 ## Quick Start
 
@@ -1093,6 +1164,7 @@ Options:
 Commands:
   setup     Run interactive PyTorch setup wizard
   config    View and manage configuration (show, init, edit)
+  docker    Manage Docker-based execution (setup, status, build, run)
   models    List available models for tasks
   download  Download models from HuggingFace Hub
   status    Show download status and disk usage

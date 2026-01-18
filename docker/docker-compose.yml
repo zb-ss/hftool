@@ -1,0 +1,116 @@
+# hftool Docker Compose configuration
+#
+# Usage:
+#   AMD ROCm:  docker compose --profile rocm run --rm hftool-rocm <args>
+#   NVIDIA:    docker compose --profile cuda run --rm hftool-cuda <args>
+#
+# Examples:
+#   docker compose --profile rocm run --rm hftool-rocm -t t2i -i "A cat" -o /workspace/cat.png
+#   docker compose --profile cuda run --rm hftool-cuda -t tts -i "Hello world" -o /workspace/hello.wav
+#
+# Interactive mode:
+#   docker compose --profile rocm run --rm hftool-rocm -I
+
+services:
+  # AMD ROCm GPU service
+  hftool-rocm:
+    image: hftool:rocm
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rocm
+    profiles:
+      - rocm
+    # ROCm GPU access
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    # Required for ROCm memory management
+    security_opt:
+      - seccomp:unconfined
+    # Add user to video group for GPU access
+    group_add:
+      - video
+      - render
+    # Shared memory for PyTorch DataLoader
+    shm_size: "16gb"
+    # Mount volumes for persistent data
+    volumes:
+      # HuggingFace model cache (shared with host)
+      - ${HF_HOME:-~/.cache/huggingface}:/root/.cache/huggingface
+      # hftool config and history
+      - ${HFTOOL_CONFIG:-~/.hftool}:/root/.hftool
+      # Custom models directory (if HFTOOL_MODELS_DIR is set)
+      - ${HFTOOL_MODELS_DIR:-~/.hftool/models}:/models
+      # Working directory for input/output files
+      - ${PWD:-./}:/workspace
+    # Environment variables
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HFTOOL_AUTO_DOWNLOAD=${HFTOOL_AUTO_DOWNLOAD:-1}
+      - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-}
+      - HFTOOL_MODELS_DIR=/models
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+
+  # NVIDIA CUDA GPU service
+  hftool-cuda:
+    image: hftool:cuda
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cuda
+    profiles:
+      - cuda
+    # NVIDIA GPU access via nvidia-container-toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Shared memory for PyTorch DataLoader
+    shm_size: "16gb"
+    # Mount volumes for persistent data
+    volumes:
+      # HuggingFace model cache (shared with host)
+      - ${HF_HOME:-~/.cache/huggingface}:/root/.cache/huggingface
+      # hftool config and history
+      - ${HFTOOL_CONFIG:-~/.hftool}:/root/.hftool
+      # Custom models directory (if HFTOOL_MODELS_DIR is set)
+      - ${HFTOOL_MODELS_DIR:-~/.hftool/models}:/models
+      # Working directory for input/output files
+      - ${PWD:-./}:/workspace
+    # Environment variables
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HFTOOL_AUTO_DOWNLOAD=${HFTOOL_AUTO_DOWNLOAD:-1}
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - HFTOOL_MODELS_DIR=/models
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+
+  # CPU-only service (for testing or systems without GPU)
+  hftool-cpu:
+    image: hftool:cpu
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cpu
+      args:
+        - PYTORCH_INDEX=https://download.pytorch.org/whl/cpu
+    profiles:
+      - cpu
+    shm_size: "8gb"
+    volumes:
+      - ${HF_HOME:-~/.cache/huggingface}:/root/.cache/huggingface
+      - ${HFTOOL_CONFIG:-~/.hftool}:/root/.hftool
+      - ${HFTOOL_MODELS_DIR:-~/.hftool/models}:/models
+      - ${PWD:-./}:/workspace
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HFTOOL_AUTO_DOWNLOAD=${HFTOOL_AUTO_DOWNLOAD:-1}
+      - HFTOOL_MODELS_DIR=/models
+    working_dir: /workspace
+    stdin_open: true
+    tty: true

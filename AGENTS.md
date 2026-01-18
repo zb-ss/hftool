@@ -13,6 +13,14 @@
 - Shell completions: `hftool completion --install`
 - Run tests: `pytest tests/` or `pytest tests/test_core.py::TestTaskRegistry::test_name`
 
+## Docker Commands (Recommended for AMD ROCm)
+- Setup wizard: `hftool docker setup` - Interactive setup for Docker mode
+- Check status: `hftool docker status` - Show hardware and Docker status
+- Build image: `hftool docker build` - Build Docker image for your platform
+- Run in Docker: `hftool docker run -- -t t2i -i "A cat" -o cat.png`
+
+Docker provides isolated ROCm 7.1.1 environment without affecting system drivers.
+
 ## New Features (v0.3.0+)
 
 ### Phase 1 Features
@@ -249,7 +257,7 @@ hftool --interactive-wizard           # Same as above
 ## Project Structure
 ```
 hftool/
-  cli.py              # CLI entry point with subcommands (models, download, status, clean, config, history)
+  cli.py              # CLI entry point with subcommands (models, download, status, clean, config, history, docker)
   core/
     device.py         # ROCm/CUDA/MPS/CPU detection
     registry.py       # Task registry and configuration
@@ -268,6 +276,13 @@ hftool/
     deps.py           # Dependency checking
     errors.py         # Custom error classes
     progress.py       # Progress bar utilities
+    docker.py         # Docker utilities and hardware detection
+docker/
+  Dockerfile.rocm     # AMD ROCm 7.1.1 + PyTorch 2.9.1
+  Dockerfile.cuda     # NVIDIA CUDA 12.4
+  Dockerfile.cpu      # CPU-only fallback
+  docker-compose.yml  # Easy GPU passthrough
+  README.md           # Docker documentation
 tests/                # pytest tests (test_core.py, test_io.py, test_utils.py, test_config.py, test_history.py, etc.)
 ```
 
