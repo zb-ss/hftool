@@ -178,9 +178,9 @@ def check_pytorch() -> CheckResult:
 
 def check_gpu_availability() -> CheckResult:
     """Check GPU availability and compatibility.
-    
+
     Returns:
-        CheckResult with GPU info
+        CheckResult with GPU info including display detection for multi-GPU systems.
     """
     try:
         import torch
@@ -190,48 +190,76 @@ def check_gpu_availability() -> CheckResult:
             status=CheckStatus.INFO,
             message="PyTorch not installed - cannot check GPU",
         )
-    
+
     details = []
     suggestions = []
-    
+
     # Check CUDA
     if torch.cuda.is_available():
         gpu_count = torch.cuda.device_count()
-        for i in range(gpu_count):
-            gpu_name = torch.cuda.get_device_name(i)
-            props = torch.cuda.get_device_properties(i)
-            vram_gb = props.total_memory / (1024**3)
-            details.append(f"GPU {i}: {gpu_name}")
-            details.append(f"  VRAM: {vram_gb:.1f} GB")
-            details.append(f"  Compute: {props.major}.{props.minor}")
-        
+
+        # Try to get detailed GPU info including display detection
+        try:
+            from hftool.core.device import get_all_gpus, get_compute_gpu
+
+            gpus = get_all_gpus()
+            compute_gpu = get_compute_gpu()
+
+            for gpu in gpus:
+                display_indicator = " [DISPLAY]" if gpu.has_display else ""
+                compute_indicator = " ← recommended" if gpu.index == compute_gpu else ""
+                details.append(f"GPU {gpu.index}: {gpu.name}{display_indicator}{compute_indicator}")
+                details.append(f"  VRAM: {gpu.vram_gb:.1f} GB")
+                if gpu.pci_bus:
+                    details.append(f"  PCI: {gpu.pci_bus}")
+                if gpu.render_device:
+                    details.append(f"  Render: {gpu.render_device}")
+
+            # Multi-GPU tips
+            if gpu_count > 1:
+                details.append("")
+                details.append("Multi-GPU Tips:")
+                details.append("  Use --gpu auto to avoid display GPU")
+                details.append("  Use --gpu 1 to use specific GPU")
+                details.append("  Use --gpu all for model parallelism")
+
+        except Exception:
+            # Fallback if get_all_gpus fails
+            for i in range(gpu_count):
+                gpu_name = torch.cuda.get_device_name(i)
+                props = torch.cuda.get_device_properties(i)
+                vram_gb = props.total_memory / (1024**3)
+                details.append(f"GPU {i}: {gpu_name}")
+                details.append(f"  VRAM: {vram_gb:.1f} GB")
+                details.append(f"  Compute: {props.major}.{props.minor}")
+
         return CheckResult(
             name="GPU Availability",
             status=CheckStatus.OK,
             message=f"{gpu_count} GPU(s) available",
             details=details,
         )
-    
+
     # Check MPS (Apple Silicon)
     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         details.append("Apple Silicon GPU detected")
         details.append("Using MPS backend")
-        
+
         return CheckResult(
             name="GPU Availability",
             status=CheckStatus.OK,
             message="Apple Silicon GPU available",
             details=details,
         )
-    
+
     # No GPU
     else:
         details.append("No GPU detected")
         details.append("Running in CPU mode")
-        
+
         suggestions.append("For better performance, use a GPU-enabled system")
         suggestions.append("Or use a cloud GPU service (Google Colab, AWS, etc.)")
-        
+
         return CheckResult(
             name="GPU Availability",
             status=CheckStatus.WARNING,
