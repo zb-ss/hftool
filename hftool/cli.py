@@ -452,6 +452,7 @@ _EXTRA_ARGS_CACHE = _extract_extra_args()
 @click.option("--input", "-i", "input_data", default=None, shell_complete=complete_input, help="Input data (text, file path, @ reference, @? for interactive, @*.ext for glob)")
 @click.option("--output-file", "-o", default=None, help="Output file path (auto-generated if omitted)")
 @click.option("--device", "-d", default="auto", shell_complete=complete_devices, help="Device to use (auto, cuda, mps, cpu)")
+@click.option("--gpu", "-g", default=None, envvar="HFTOOL_GPU", help="GPU(s) to use: 'auto' (smart default), 'all', '0', '1', '0,1' (multi-GPU)")
 @click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type (bfloat16, float16, float32)")
 @click.option("--seed", type=int, default=None, help="Random seed for reproducible generation")
 @click.option("--interactive", is_flag=True, help="Interactive mode for complex inputs (JSON builder)")
@@ -474,6 +475,7 @@ def main(
     input_data: Optional[str],
     output_file: Optional[str],
     device: str,
+    gpu: Optional[str],
     dtype: Optional[str],
     seed: Optional[int],
     interactive: bool,
@@ -551,6 +553,7 @@ def main(
     ctx.obj["verbose"] = verbose
     ctx.obj["open"] = open
     ctx.obj["seed"] = seed
+    ctx.obj["gpu"] = gpu
     ctx.obj["interactive"] = interactive
     ctx.obj["quiet"] = quiet
     ctx.obj["output_json"] = output_json
@@ -593,6 +596,7 @@ def main(
                 embed_metadata=embed_metadata,
                 open_output=open,
                 wizard_extra_kwargs=params.get("extra_kwargs"),
+                gpu=params.get("gpu", gpu),
             )
         except click.Abort:
             sys.exit(0)
@@ -642,6 +646,7 @@ def main(
             output_json=output_json,
             embed_metadata=embed_metadata,
             open_output=open,
+            gpu=gpu,
         )
 
 
@@ -681,6 +686,7 @@ def setup_command(ctx: click.Context):
 @click.option("--input", "-i", "input_data", default=None, shell_complete=complete_input, help="Input data (@ references or @? for interactive)")
 @click.option("--output-file", "-o", default=None, help="Output file path")
 @click.option("--device", "-d", default="auto", shell_complete=complete_devices, help="Device to use")
+@click.option("--gpu", "-g", default=None, envvar="HFTOOL_GPU", help="GPU(s) to use: 'auto', 'all', '0', '1', '0,1'")
 @click.option("--dtype", default=None, shell_complete=complete_dtypes, help="Data type")
 @click.option("--seed", type=int, default=None, help="Random seed for reproducibility")
 @click.option("--interactive", is_flag=True, help="Interactive JSON builder mode")
@@ -693,6 +699,7 @@ def run_command(
     input_data: Optional[str],
     output_file: Optional[str],
     device: str,
+    gpu: Optional[str],
     dtype: Optional[str],
     seed: Optional[int],
     interactive: bool,
@@ -702,7 +709,7 @@ def run_command(
     # Ensure PyTorch is ready
     if not _ensure_pytorch_ready():
         sys.exit(1)
-    
+
     verbose = ctx.obj.get("verbose", False)
     # Use command-level --open if specified, otherwise use global
     open_output = open if open is not None else ctx.obj.get("open")
@@ -710,8 +717,10 @@ def run_command(
     final_seed = seed if seed is not None else ctx.obj.get("seed")
     # Use command-level --interactive if specified, otherwise use global
     final_interactive = interactive or ctx.obj.get("interactive", False)
-    
-    _run_task_command(ctx, task, model, input_data, output_file, device, dtype, final_seed, final_interactive, verbose, open_output)
+    # Use command-level --gpu if specified, otherwise use global
+    final_gpu = gpu if gpu is not None else ctx.obj.get("gpu")
+
+    _run_task_command(ctx, task, model, input_data, output_file, device, dtype, final_seed, final_interactive, verbose, open_output, gpu=final_gpu)
 
 
 # =============================================================================
@@ -1842,6 +1851,7 @@ def _run_task_command(
     embed_metadata: bool = True,
     open_output: Optional[bool] = None,
     wizard_extra_kwargs: Optional[Dict[str, Any]] = None,
+    gpu: Optional[str] = None,
 ):
     """Execute a task (internal helper)."""
     import random
@@ -1863,7 +1873,24 @@ def _run_task_command(
     # Add seed to extra_kwargs (will be passed to model if supported)
     if "generator_seed" not in extra_kwargs and "seed" not in extra_kwargs:
         extra_kwargs["seed"] = seed
-    
+
+    # Configure GPU selection (before any CUDA/ROCm operations)
+    gpu_indices = []
+    if gpu and device in ("auto", "cuda"):
+        from hftool.core.device import parse_gpu_selection, get_cuda_visible_devices, is_rocm, get_all_gpus
+        gpu_indices = parse_gpu_selection(gpu)
+        if gpu_indices:
+            visible_devices = get_cuda_visible_devices(gpu_indices)
+            # Set environment variables for GPU isolation
+            # Note: These must be set before PyTorch initializes CUDA
+            if is_rocm():
+                os.environ["HIP_VISIBLE_DEVICES"] = visible_devices
+                os.environ["ROCR_VISIBLE_DEVICES"] = visible_devices
+            else:
+                os.environ["CUDA_VISIBLE_DEVICES"] = visible_devices
+            # Pass GPU info to extra_kwargs for tasks that need it
+            extra_kwargs["_gpu_indices"] = gpu_indices
+
     # Quiet and JSON modes suppress verbose output
     if verbose and not quiet and not output_json:
         click.echo(f"Task: {task}")
@@ -1871,8 +1898,13 @@ def _run_task_command(
         click.echo(f"Input: {input_data}")
         click.echo(f"Output: {output_file or '(auto)'}")
         click.echo(f"Device: {device}")
+        if gpu and gpu_indices:
+            click.echo(f"GPU: {gpu} (indices: {gpu_indices})")
         if extra_kwargs:
-            click.echo(f"Extra args: {extra_kwargs}")
+            # Filter out internal keys for display
+            display_kwargs = {k: v for k, v in extra_kwargs.items() if not k.startswith("_")}
+            if display_kwargs:
+                click.echo(f"Extra args: {display_kwargs}")
     
     try:
         # Import here to avoid slow startup for --help
@@ -2168,7 +2200,8 @@ def _run_task_command(
             device=device,
             dtype=dtype,
             verbose=verbose and not quiet and not output_json,
-            **extra_kwargs
+            # Filter out internal keys (starting with _) before passing to pipeline
+            **{k: v for k, v in extra_kwargs.items() if not k.startswith("_")}
         )
         
         # Embed metadata in output file
@@ -2837,9 +2870,11 @@ def docker_build(platform: Optional[str], force: bool):
 @docker_command.command("run", context_settings=dict(
     ignore_unknown_options=True,
 ))
+@click.option("--gpu", "-g", default=None, envvar="HFTOOL_GPU",
+              help="GPU(s) to use: 'auto', 'all', '0', '1', '0,1' (passed to container)")
 @click.argument("hftool_args", nargs=-1, required=False)
 @click.pass_context
-def docker_run(ctx: click.Context, hftool_args: tuple):
+def docker_run(ctx: click.Context, gpu: Optional[str], hftool_args: tuple):
     """Run hftool command inside Docker container.
 
     Pass hftool arguments after the run command (use -- to separate if needed).
@@ -2847,6 +2882,7 @@ def docker_run(ctx: click.Context, hftool_args: tuple):
     \b
     Examples:
       hftool docker run -t t2i -i "A cat" -o cat.png
+      hftool docker run --gpu 1 -- -t t2v -i "A cat" -o cat.mp4
       hftool docker run -- -t t2i -i "A cat" -o cat.png
       hftool docker run --help
     """
@@ -2860,6 +2896,12 @@ def docker_run(ctx: click.Context, hftool_args: tuple):
     if not hw.docker_available:
         click.echo("Error: Docker is not installed.", err=True)
         raise SystemExit(1)
+
+    # Parse GPU selection
+    gpu_indices = None
+    if gpu:
+        from hftool.core.device import parse_gpu_selection
+        gpu_indices = parse_gpu_selection(gpu)
 
     # Combine explicit args and context args
     args = list(hftool_args) + list(ctx.args)
@@ -2875,10 +2917,10 @@ def docker_run(ctx: click.Context, hftool_args: tuple):
         elif arg == "--no-open":
             no_open = True
 
-    exit_code = run_in_docker(list(args), hw)
+    exit_code = run_in_docker(list(args), hw, gpu_indices=gpu_indices)
 
-    # Auto-open output file on host after successful docker run
-    if exit_code == 0 and output_file and not no_open:
+    # Fix output file permissions (Docker creates files as root)
+    if exit_code == 0 and output_file:
         # Map container path to host path
         # /workspace/* -> current directory
         if output_file.startswith("/workspace/"):
@@ -2891,18 +2933,35 @@ def docker_run(ctx: click.Context, hftool_args: tuple):
             host_path = os.path.join(os.getcwd(), host_path)
 
         if os.path.exists(host_path):
-            # Open file on host
+            # Fix ownership to current user (Docker creates as root)
             try:
-                system = platform.system()
-                if system == "Darwin":
-                    subprocess.run(["open", host_path], check=False)
-                elif system == "Linux":
-                    subprocess.run(["xdg-open", host_path], check=False,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                elif system == "Windows":
-                    os.startfile(host_path)
+                uid = os.getuid()
+                gid = os.getgid()
+                file_stat = os.stat(host_path)
+                # Only chown if owned by root (uid 0)
+                if file_stat.st_uid == 0:
+                    # Try chown directly first (works if user has sudo NOPASSWD)
+                    subprocess.run(
+                        ["sudo", "-n", "chown", f"{uid}:{gid}", host_path],
+                        capture_output=True,
+                        timeout=5,
+                    )
             except Exception:
-                pass  # Silently fail if can't open
+                pass  # Silently fail - user can fix manually
+
+            # Auto-open output file on host
+            if not no_open:
+                try:
+                    system = platform.system()
+                    if system == "Darwin":
+                        subprocess.run(["open", host_path], check=False)
+                    elif system == "Linux":
+                        subprocess.run(["xdg-open", host_path], check=False,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    elif system == "Windows":
+                        os.startfile(host_path)
+                except Exception:
+                    pass  # Silently fail if can't open
 
     raise SystemExit(exit_code)
 

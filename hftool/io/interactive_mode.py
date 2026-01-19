@@ -39,15 +39,17 @@ def run_interactive_mode(
     output_json: bool = False,
 ) -> Dict[str, Any]:
     """Run the full interactive wizard.
-    
+
     Guides the user through:
     1. Task selection
     2. Model selection (with download status)
     3. Input (text, file, or JSON builder)
     4. Output file
-    5. Device and dtype
-    6. Seed
-    7. Extra parameters
+    5. Device selection
+    6. GPU selection (for multi-GPU systems - shows display detection)
+    7. Dtype
+    8. Seed
+    9. Extra parameters
     
     Args:
         quiet: Suppress non-essential output
@@ -98,22 +100,25 @@ def run_interactive_mode(
         
         # Step 5: Device
         device = _select_device(inquirer, Choice)
-        
-        # Step 6: Dtype (optional)
+
+        # Step 6: GPU selection (for multi-GPU systems)
+        gpu = _select_gpu(inquirer, Choice, device)
+
+        # Step 7: Dtype (optional)
         dtype = _select_dtype(inquirer, Choice)
-        
-        # Step 7: Seed
+
+        # Step 8: Seed
         seed = _get_seed(inquirer)
-        
-        # Step 8: Extra parameters (optional)
+
+        # Step 9: Extra parameters (optional)
         extra_kwargs = _get_extra_params(inquirer, task)
-        
+
         # Show summary
         click.echo("")
         click.echo(click.style("═══ Summary ═══", fg="cyan", bold=True))
         click.echo(f"  Task:   {task}")
         click.echo(f"  Model:  {model or '(default)'}")
-        
+
         # Truncate long input for display
         input_display = input_data
         if len(input_display) > 50:
@@ -121,22 +126,25 @@ def run_interactive_mode(
         click.echo(f"  Input:  {input_display}")
         click.echo(f"  Output: {output_file or '(auto)'}")
         click.echo(f"  Device: {device}")
+        if gpu:
+            click.echo(f"  GPU:    {gpu}")
         click.echo(f"  Dtype:  {dtype or '(auto)'}")
         click.echo(f"  Seed:   {seed}")
         if extra_kwargs:
             click.echo(f"  Params: {extra_kwargs}")
         click.echo("")
-        
+
         # Confirm
         if not inquirer.confirm(message="Run with these settings?", default=True).execute():
             raise click.Abort()
-        
+
         return {
             "task": task,
             "model": model,
             "input_data": input_data,
             "output_file": output_file,
             "device": device,
+            "gpu": gpu,
             "dtype": dtype,
             "seed": seed,
             "extra_kwargs": extra_kwargs,
@@ -648,6 +656,80 @@ def _select_device(inquirer, Choice) -> str:
         choices=devices,
         default="auto",
     ).execute()
+
+
+def _select_gpu(inquirer, Choice, device: str) -> Optional[str]:
+    """Select GPU(s) for multi-GPU systems.
+
+    Only shown when CUDA/ROCm is available and multiple GPUs detected.
+
+    Args:
+        inquirer: InquirerPy module
+        Choice: InquirerPy Choice class
+        device: Selected device string
+
+    Returns:
+        GPU selection string or None
+    """
+    # Only show GPU selection for CUDA/ROCm devices
+    if device not in ("auto", "cuda") and not device.startswith("cuda:"):
+        return None
+
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return None
+
+        gpu_count = torch.cuda.device_count()
+        if gpu_count <= 1:
+            return None  # No need for GPU selection with single GPU
+
+        # Get GPU info with display detection
+        try:
+            from hftool.core.device import get_all_gpus, get_compute_gpu
+            gpus = get_all_gpus()
+            compute_gpu = get_compute_gpu()
+        except Exception:
+            gpus = None
+            compute_gpu = 0
+
+        choices = []
+
+        # Auto option (recommended - avoids display GPU)
+        if gpus:
+            compute_name = gpus[compute_gpu].name if compute_gpu < len(gpus) else f"GPU {compute_gpu}"
+            choices.append(Choice(
+                value="auto",
+                name=f"auto - Smart selection (GPU {compute_gpu}: {compute_name})"
+            ))
+        else:
+            choices.append(Choice(value="auto", name="auto - Smart selection (avoids display GPU)"))
+
+        # Individual GPU options
+        if gpus:
+            for gpu in gpus:
+                display_tag = " [DISPLAY]" if gpu.has_display else ""
+                recommended = " ← recommended" if gpu.index == compute_gpu else ""
+                choices.append(Choice(
+                    value=str(gpu.index),
+                    name=f"GPU {gpu.index}: {gpu.name} ({gpu.vram_gb:.0f}GB){display_tag}{recommended}"
+                ))
+        else:
+            for i in range(gpu_count):
+                name = torch.cuda.get_device_name(i)
+                choices.append(Choice(value=str(i), name=f"GPU {i}: {name}"))
+
+        # All GPUs option (for model parallelism)
+        choices.append(Choice(value="all", name=f"all - Use all {gpu_count} GPUs (model parallelism)"))
+
+        return inquirer.select(
+            message="GPU Selection:",
+            choices=choices,
+            default="auto",
+        ).execute()
+
+    except ImportError:
+        return None
 
 
 def _select_dtype(inquirer, Choice) -> Optional[str]:

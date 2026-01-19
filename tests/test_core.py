@@ -47,10 +47,123 @@ class TestDeviceDetection:
     def test_get_device_map_returns_string(self):
         """get_device_map should return a valid device map string."""
         from hftool.core.device import get_device_map
-        
+
         device_map = get_device_map()
         assert isinstance(device_map, str)
         assert device_map in ("cuda:0", "auto", "mps", "cpu")
+
+
+class TestMultiGPU:
+    """Tests for multi-GPU functionality in hftool.core.device."""
+
+    def test_gpu_info_dataclass(self):
+        """GPUInfo should be a dataclass with expected fields."""
+        from hftool.core.device import GPUInfo
+
+        gpu = GPUInfo(
+            index=0,
+            name="Test GPU",
+            vram_gb=24.0,
+            pci_bus="0000:03:00.0",
+            has_display=True,
+            render_device="/dev/dri/renderD128",
+            is_rocm=True,
+        )
+        assert gpu.index == 0
+        assert gpu.name == "Test GPU"
+        assert gpu.vram_gb == 24.0
+        assert gpu.has_display is True
+        assert gpu.is_rocm is True
+
+    def test_parse_gpu_selection_auto(self):
+        """parse_gpu_selection('auto') should return a single GPU index."""
+        from hftool.core.device import parse_gpu_selection
+        import torch
+
+        if not torch.cuda.is_available():
+            pytest.skip("No CUDA/ROCm GPU available")
+
+        result = parse_gpu_selection("auto")
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert isinstance(result[0], int)
+        assert result[0] >= 0
+
+    def test_parse_gpu_selection_all(self):
+        """parse_gpu_selection('all') should return all GPU indices."""
+        from hftool.core.device import parse_gpu_selection
+        import torch
+
+        if not torch.cuda.is_available():
+            pytest.skip("No CUDA/ROCm GPU available")
+
+        result = parse_gpu_selection("all")
+        assert isinstance(result, list)
+        assert len(result) == torch.cuda.device_count()
+
+    def test_parse_gpu_selection_single(self):
+        """parse_gpu_selection('0') should return [0]."""
+        from hftool.core.device import parse_gpu_selection
+        import torch
+
+        if not torch.cuda.is_available():
+            pytest.skip("No CUDA/ROCm GPU available")
+
+        result = parse_gpu_selection("0")
+        assert result == [0]
+
+    def test_parse_gpu_selection_multiple(self):
+        """parse_gpu_selection('0,1') should return [0, 1] if available."""
+        from hftool.core.device import parse_gpu_selection
+        import torch
+
+        if not torch.cuda.is_available():
+            pytest.skip("No CUDA/ROCm GPU available")
+
+        if torch.cuda.device_count() < 2:
+            pytest.skip("Need at least 2 GPUs for this test")
+
+        result = parse_gpu_selection("0,1")
+        assert result == [0, 1]
+
+    def test_get_cuda_visible_devices(self):
+        """get_cuda_visible_devices should format GPU indices correctly."""
+        from hftool.core.device import get_cuda_visible_devices
+
+        assert get_cuda_visible_devices([0]) == "0"
+        assert get_cuda_visible_devices([1]) == "1"
+        assert get_cuda_visible_devices([0, 1]) == "0,1"
+        assert get_cuda_visible_devices([1, 2, 3]) == "1,2,3"
+
+    def test_get_all_gpus_returns_list(self):
+        """get_all_gpus should return a list of GPUInfo."""
+        from hftool.core.device import get_all_gpus, GPUInfo
+        import torch
+
+        if not torch.cuda.is_available():
+            pytest.skip("No CUDA/ROCm GPU available")
+
+        gpus = get_all_gpus()
+        assert isinstance(gpus, list)
+        assert len(gpus) == torch.cuda.device_count()
+        for gpu in gpus:
+            assert isinstance(gpu, GPUInfo)
+            assert isinstance(gpu.index, int)
+            assert isinstance(gpu.name, str)
+            assert isinstance(gpu.vram_gb, float)
+            assert isinstance(gpu.has_display, bool)
+
+    def test_get_compute_gpu_returns_valid_index(self):
+        """get_compute_gpu should return a valid GPU index."""
+        from hftool.core.device import get_compute_gpu
+        import torch
+
+        if not torch.cuda.is_available():
+            pytest.skip("No CUDA/ROCm GPU available")
+
+        index = get_compute_gpu()
+        assert isinstance(index, int)
+        assert 0 <= index < torch.cuda.device_count()
 
 
 class TestTaskRegistry:

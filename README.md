@@ -988,7 +988,7 @@ hftool -t i2i -m sdxl-refiner \
 
 ```bash
 # Use multi-GPU (distributes across available GPUs)
-HFTOOL_MULTI_GPU=1 hftool -t i2i -i '{"image": "photo.jpg", "prompt": "..."}' -o out.png
+hftool -t i2i -i '{"image": "photo.jpg", "prompt": "..."}' -o out.png --gpu all
 
 # Use CPU offload (slower but works on 16-24GB GPUs)
 HFTOOL_CPU_OFFLOAD=1 hftool -t i2i -i '{"image": "photo.jpg", "prompt": "..."}' -o out.png
@@ -1150,6 +1150,7 @@ Options:
   -i, --input TEXT        Input data: text, file path, @ reference, @? for interactive
   -o, --output-file TEXT  Output file path (auto-generated if omitted)
   -d, --device TEXT       Device: auto, cuda, mps, cpu (default: auto)
+  -g, --gpu TEXT          GPU selection: auto, all, 0, 1, 0,1 (multi-GPU)
   --dtype TEXT            Data type: bfloat16, float16, float32
   --seed INTEGER          Random seed for reproducible generation
   --interactive           Interactive mode for complex inputs (JSON builder)
@@ -1178,6 +1179,7 @@ Commands:
 | `HFTOOL_MODELS_DIR` | Custom models storage directory | `~/.hftool/models/` |
 | `HFTOOL_AUTO_DOWNLOAD` | Auto-download models without prompting | `0` (disabled) |
 | `HFTOOL_AUTO_OPEN` | Auto-open output files | `auto` (media files only) |
+| `HFTOOL_GPU` | GPU selection: `auto`, `all`, `0`, `1`, `0,1` | (none) |
 | `HFTOOL_ROCM_PATH` | Path to ROCm libraries (e.g., Ollama's bundled ROCm) | (none) |
 | `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture override (e.g., `11.0.0` for RX 7900) | (none) |
 | `HF_TOKEN` | HuggingFace token for gated models | (none) |
@@ -1258,6 +1260,50 @@ Basic support for M1/M2/M3 Macs. Some models may require `--dtype float32`.
 Works but slow. Use smaller models:
 - `openai/whisper-small` for ASR
 - `suno/bark-small` for TTS
+
+### Multi-GPU Support
+
+For systems with multiple GPUs (e.g., dual RX 7900 XTX), hftool can automatically detect which GPU has your display connected and route compute workloads to the other GPU. This prevents VRAM conflicts that can crash your desktop compositor.
+
+**Check your GPUs:**
+
+```bash
+hftool doctor
+# Shows:
+#   GPU 0: AMD Radeon RX 7900 XTX [DISPLAY]
+#   GPU 1: AMD Radeon RX 7900 XTX <- recommended
+```
+
+**GPU Selection Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--gpu auto` | Smart selection - uses GPU without display (default behavior) |
+| `--gpu 0` | Use specific GPU by index |
+| `--gpu 1` | Use specific GPU by index |
+| `--gpu 0,1` | Use multiple specific GPUs |
+| `--gpu all` | Use all GPUs (model parallelism for large models) |
+
+**Examples:**
+
+```bash
+# Auto-select compute GPU (avoids display GPU)
+hftool -t t2v -i "A cat running" -o cat.mp4 --gpu auto
+
+# Use specific GPU
+hftool -t t2v -i "A cat running" -o cat.mp4 --gpu 1
+
+# Use all GPUs for large models like HunyuanVideo
+hftool -t t2v -i "A cat running" -o cat.mp4 --gpu all
+
+# Docker with specific GPU
+hftool docker run --gpu 1 -- -t t2v -i "A cat" -o cat.mp4
+
+# Environment variable (useful in .env file)
+HFTOOL_GPU=1 hftool -t t2v -i "A cat" -o cat.mp4
+```
+
+**Interactive Mode:** When using `hftool -I`, the wizard will show GPU selection with display detection for multi-GPU systems.
 
 ---
 
