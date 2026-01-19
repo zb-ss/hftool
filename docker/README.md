@@ -12,7 +12,7 @@ hftool docker setup
 hftool docker build
 
 # Run commands in Docker
-hftool docker run -- -t t2i -i "A sunset over mountains" -o sunset.png
+hftool docker run -t t2i -i "A sunset over mountains" -o sunset.png
 ```
 
 ## Why Docker?
@@ -113,11 +113,16 @@ docker compose --profile rocm run --rm hftool-rocm -I
 
 ## Environment Variables
 
+These are automatically passed through when using `hftool docker run`:
+
 | Variable | Description |
 |----------|-------------|
+| `HFTOOL_MODELS_DIR` | Custom models directory (mounted to `/models` in container) |
+| `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture (e.g., `11.0.0` for RX 7900) |
 | `HF_TOKEN` | HuggingFace token for gated models |
-| `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture override |
-| `HFTOOL_AUTO_DOWNLOAD` | Auto-download models (default: 1) |
+| `HFTOOL_DEBUG` | Enable debug output (`1` to enable) |
+| `HFTOOL_LOG_FILE` | Log file path (directory is mounted) |
+| `HFTOOL_AUTO_DOWNLOAD` | Auto-download models (default: `1` in Docker) |
 
 ## GPU-Specific Notes
 

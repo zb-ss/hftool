@@ -2611,7 +2611,10 @@ def _run_task(
 # DOCKER COMMAND
 # =============================================================================
 
-@main.group("docker", invoke_without_command=True)
+@main.group("docker", invoke_without_command=True, context_settings=dict(
+    ignore_unknown_options=True,
+    allow_extra_args=True,
+))
 @click.pass_context
 def docker_command(ctx: click.Context):
     """Manage Docker-based execution for isolated GPU environments.
@@ -2831,20 +2834,25 @@ def docker_build(platform: Optional[str], force: bool):
         raise SystemExit(1)
 
 
-@docker_command.command("run")
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@docker_command.command("run", context_settings=dict(
+    ignore_unknown_options=True,
+))
+@click.argument("hftool_args", nargs=-1, required=False)
 @click.pass_context
-def docker_run(ctx: click.Context, args: tuple):
+def docker_run(ctx: click.Context, hftool_args: tuple):
     """Run hftool command inside Docker container.
 
-    Pass hftool arguments after --.
+    Pass hftool arguments after the run command (use -- to separate if needed).
 
     \b
     Examples:
+      hftool docker run -t t2i -i "A cat" -o cat.png
       hftool docker run -- -t t2i -i "A cat" -o cat.png
-      hftool docker run -- --help
-      hftool docker run -- -I
+      hftool docker run --help
     """
+    import os
+    import subprocess
+    import platform
     from hftool.utils.docker import detect_hardware, run_in_docker
 
     hw = detect_hardware()
@@ -2853,10 +2861,49 @@ def docker_run(ctx: click.Context, args: tuple):
         click.echo("Error: Docker is not installed.", err=True)
         raise SystemExit(1)
 
+    # Combine explicit args and context args
+    args = list(hftool_args) + list(ctx.args)
     if not args:
         args = ["--help"]
 
+    # Extract output file from args for auto-open after docker exits
+    output_file = None
+    no_open = False
+    for i, arg in enumerate(args):
+        if arg in ("-o", "--output-file") and i + 1 < len(args):
+            output_file = args[i + 1]
+        elif arg == "--no-open":
+            no_open = True
+
     exit_code = run_in_docker(list(args), hw)
+
+    # Auto-open output file on host after successful docker run
+    if exit_code == 0 and output_file and not no_open:
+        # Map container path to host path
+        # /workspace/* -> current directory
+        if output_file.startswith("/workspace/"):
+            host_path = output_file.replace("/workspace/", "")
+        else:
+            host_path = output_file
+
+        # Make path absolute relative to cwd
+        if not os.path.isabs(host_path):
+            host_path = os.path.join(os.getcwd(), host_path)
+
+        if os.path.exists(host_path):
+            # Open file on host
+            try:
+                system = platform.system()
+                if system == "Darwin":
+                    subprocess.run(["open", host_path], check=False)
+                elif system == "Linux":
+                    subprocess.run(["xdg-open", host_path], check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                elif system == "Windows":
+                    os.startfile(host_path)
+            except Exception:
+                pass  # Silently fail if can't open
+
     raise SystemExit(exit_code)
 
 

@@ -41,30 +41,11 @@ Works on **AMD ROCm**, NVIDIA CUDA, Apple MPS, and CPU.
 
 ### Quick Install (Docker - Recommended)
 
-The easiest way to install hftool with full GPU support:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zb-ss/hftool/master/install.sh | bash
 ```
 
-This one-liner will:
-- Detect your GPU (AMD ROCm, NVIDIA CUDA, or CPU)
-- Build a Docker image with all dependencies pre-configured
-- Create a wrapper at `~/.local/bin/hftool`
-
-**Options:**
-```bash
-# Force specific platform
-curl -fsSL https://raw.githubusercontent.com/zb-ss/hftool/master/install.sh | bash -s -- --platform rocm
-
-# Custom install directory
-curl -fsSL https://raw.githubusercontent.com/zb-ss/hftool/master/install.sh | bash -s -- --install-dir /usr/local/bin
-```
-
-**Benefits:**
-- ROCm 7.1.1 isolated from system (won't affect gaming drivers)
-- All dependencies pre-installed (no pip conflicts)
-- Works on any Linux with Docker
+This auto-detects your GPU, builds a Docker image, and creates a wrapper at `~/.local/bin/hftool`. See [Docker Install](#docker-install-recommended-for-amd-rocm) for details and options.
 
 ---
 
@@ -192,9 +173,18 @@ pipx runpip hftool install torch torchvision torchaudio --index-url https://down
 
 Docker provides the easiest way to use hftool with full GPU support, especially for AMD users who want to keep their system clean for gaming.
 
+**Benefits:**
+- ROCm 7.1.1 isolated from system (won't affect gaming drivers)
+- All dependencies pre-installed (no pip conflicts)
+- Works on any Linux with Docker
+
 **Option 1: One-liner install (recommended)**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zb-ss/hftool/master/install.sh | bash
+
+# With options:
+curl -fsSL ... | bash -s -- --platform rocm      # Force platform
+curl -fsSL ... | bash -s -- --install-dir /usr/local/bin  # Custom dir
 ```
 
 **Option 2: Manual setup via pip**
@@ -206,15 +196,7 @@ pip install hftool
 hftool docker setup
 ```
 
-The setup wizard will:
-1. Detect your GPU (AMD ROCm, NVIDIA CUDA, or CPU)
-2. Build a Docker image with all dependencies pre-configured
-3. Configure hftool to run commands in the container automatically
-
-**Benefits of Docker mode:**
-- ROCm 7.1.1 isolated from system (won't affect gaming drivers)
-- All dependencies pre-installed (no pip conflicts)
-- Works on any Linux with Docker and AMD GPU
+The setup wizard will detect your GPU, build a Docker image, and configure hftool to run commands in the container.
 
 **Manual Docker commands:**
 ```bash
@@ -224,9 +206,25 @@ hftool docker status
 # Build the image manually
 hftool docker build
 
-# Run commands explicitly in Docker
-hftool docker run -- -t t2i -i "A cat" -o cat.png
+# Run commands in Docker
+hftool docker run -t t2i -i "A cat" -o cat.png
+
+# Output files auto-open on host after generation completes
+# Use --no-open to disable
+hftool docker run -t t2i -i "A cat" -o cat.png --no-open
 ```
+
+**Environment variables passed to Docker:**
+
+These environment variables are automatically passed through to the container:
+
+| Variable | Description |
+|----------|-------------|
+| `HFTOOL_MODELS_DIR` | Custom models directory (mounted to `/models`) |
+| `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture (e.g., `11.0.0` for RX 7900) |
+| `HF_TOKEN` | HuggingFace token for gated models |
+| `HFTOOL_DEBUG` | Enable debug output |
+| `HFTOOL_LOG_FILE` | Log file path (directory is mounted) |
 
 See [docker/README.md](docker/README.md) for detailed Docker documentation.
 

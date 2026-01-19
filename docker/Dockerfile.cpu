@@ -36,9 +36,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# Fix deprecated PyTorch env var warning
+ENV PYTORCH_CUDA_ALLOC_CONF=""
+ENV PYTORCH_ALLOC_CONF=""
+
 # Upgrade pip and install build dependencies
-# setuptools-scm must be installed BEFORE building hftool
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel setuptools-scm
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Install CPU-only PyTorch
 ARG PYTORCH_INDEX=https://download.pytorch.org/whl/cpu
@@ -52,17 +55,31 @@ RUN pip install --no-cache-dir \
 COPY pyproject.toml README.md ./
 COPY hftool/ ./hftool/
 
-# Set version for setuptools-scm (no .git in Docker context)
+# Set version for Docker build
 ARG HFTOOL_VERSION=0.5.0
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${HFTOOL_VERSION}
-ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_HFTOOL=${HFTOOL_VERSION}
-
-# Write version file directly to bypass setuptools-scm entirely
 RUN echo "__version__ = '${HFTOOL_VERSION}'" > hftool/_version.py
 
-# Install hftool with all optional dependencies
-# --no-build-isolation ensures env vars are passed to the build
-RUN pip install --no-cache-dir --no-build-isolation ".[all]"
+# Install all dependencies (fast, from pre-built wheels)
+RUN pip install --no-cache-dir \
+    "transformers>=4.45.0" \
+    "click>=8.0.0" \
+    "huggingface_hub>=0.20.0" \
+    "rich>=13.0.0" \
+    "python-dotenv>=1.0.0" \
+    "diffusers>=0.36.0" \
+    "Pillow>=9.0.0" \
+    "accelerate>=0.26.0" \
+    "protobuf>=3.20.0" \
+    "sentencepiece>=0.1.99" \
+    "soundfile>=0.12.0" \
+    "ftfy>=6.0.0" \
+    "InquirerPy>=0.3.0"
+
+# Install hftool manually (bypass pyproject.toml entirely)
+RUN SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])") && \
+    cp -r hftool $SITE_PACKAGES/ && \
+    printf '#!/usr/bin/env python\nfrom hftool.cli import main\nmain()\n' > /usr/local/bin/hftool && \
+    chmod +x /usr/local/bin/hftool
 
 # Pre-download common model components to speed up first run
 RUN python -c "from transformers import AutoTokenizer; print('Transformers ready')"
@@ -79,5 +96,6 @@ ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 # Set working directory
 WORKDIR /workspace
 
-# Default command - show help
-CMD ["hftool", "--help"]
+# Set entrypoint to hftool (arguments are appended)
+ENTRYPOINT ["hftool"]
+CMD ["--help"]
