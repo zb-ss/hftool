@@ -206,12 +206,29 @@ def _convert_frame_to_pil(frame: Any, frame_index: int = 0) -> "Image.Image":
     
     # Handle numpy arrays
     if isinstance(frame, np.ndarray):
+        # Defensive check for unexpected multi-dimensional arrays
+        if frame.ndim == 5:
+            raise ValueError(
+                f"Frame {frame_index} has 5 dimensions {frame.shape}. "
+                "Expected single frame, got batched video. Unwrap before saving."
+            )
+
+        if frame.ndim == 4:
+            # Could be (1, H, W, C) single frame or (T, H, W, C) video
+            if frame.shape[0] > 4:  # Likely a video, not batch of 1
+                raise ValueError(
+                    f"Frame {frame_index} has shape {frame.shape}. "
+                    "This appears to be multiple frames. Unwrap before saving."
+                )
+            # Treat as single frame with batch dimension
+            frame = frame[0]
+
         # Normalize to uint8 if needed
         if frame.dtype == np.float32 or frame.dtype == np.float64:
             # Check range: if values are in [0, 1], scale to [0, 255]
             frame_min = float(frame.min())
             frame_max = float(frame.max())
-            
+
             if frame_max <= 1.0 and frame_min >= 0.0:
                 frame = (frame * 255).astype(np.uint8)
             elif frame_max <= 1.0 and frame_min >= -1.0:
@@ -222,11 +239,6 @@ def _convert_frame_to_pil(frame: Any, frame_index: int = 0) -> "Image.Image":
                 frame = ((frame - frame_min) / (frame_max - frame_min + 1e-8) * 255).astype(np.uint8)
         elif frame.dtype != np.uint8:
             frame = frame.astype(np.uint8)
-        
-        # Handle different array shapes
-        if frame.ndim == 4:
-            # Batch dimension: (B, H, W, C) or (B, C, H, W)
-            frame = frame[0]
         
         if frame.ndim == 3:
             # Check if channels-first (C, H, W) or channels-last (H, W, C)
@@ -257,37 +269,58 @@ def save_video(
     **kwargs
 ) -> str:
     """Save video frames to MP4 file using ffmpeg.
-    
+
     Args:
         frames: List of PIL.Image objects or numpy arrays
         output_path: Path to save to
         fps: Frames per second
         **kwargs: Additional arguments (quality, codec, etc.)
-    
+
     Returns:
         Path to saved file
-    
+
     Raises:
         RuntimeError: If ffmpeg is not available
     """
     import shutil
-    
+    import click
+
     if shutil.which("ffmpeg") is None:
         raise RuntimeError(
             "ffmpeg is required for video saving but was not found. "
             "Please install ffmpeg: https://ffmpeg.org/download.html"
         )
-    
+
     try:
         from PIL import Image
     except ImportError:
         raise ImportError("PIL is required for video saving. Install with: pip install Pillow")
-    
+
+    import numpy as np
+
+    # Unwrap batch dimension if frames is numpy array or tensor
+    if hasattr(frames, "cpu"):
+        frames = frames.cpu().numpy()
+
+    if isinstance(frames, np.ndarray):
+        if frames.ndim == 5:
+            # Shape: (batch, num_frames, H, W, C) - take first batch
+            frames = frames[0]
+        if frames.ndim == 4:
+            # Shape: (num_frames, H, W, C) - convert to list
+            frames = [frames[i] for i in range(frames.shape[0])]
+
+    # Validate frame count
+    if not frames or (hasattr(frames, '__len__') and len(frames) == 0):
+        raise ValueError("No frames to save - video generation may have failed")
+
+    click.echo(f"Encoding {len(frames)} frames to video...")
+
     # Get encoding settings
     crf = kwargs.get("crf", 23)  # Quality (lower = better, 18-28 is reasonable)
     codec = kwargs.get("codec", "libx264")
     pix_fmt = kwargs.get("pix_fmt", "yuv420p")
-    
+
     # Create temporary directory for frames
     with tempfile.TemporaryDirectory() as tmpdir:
         # Save frames as images
