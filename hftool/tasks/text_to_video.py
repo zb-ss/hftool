@@ -352,15 +352,28 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         # Extract frames (different pipelines return different formats)
         if hasattr(result, "frames"):
             frames = result.frames
-            # Some pipelines return nested list: [[frame1, frame2, ...]]
-            # Use len() check instead of bool(frames) to avoid numpy array ambiguity
-            if isinstance(frames, list) and len(frames) > 0 and isinstance(frames[0], list):
-                frames = frames[0]
         elif hasattr(result, "images"):
             frames = result.images
         else:
             frames = result
-        
+
+        # Handle torch tensors - convert to numpy
+        if hasattr(frames, "cpu"):
+            frames = frames.cpu().numpy()
+
+        # Handle numpy arrays with batch dimension
+        import numpy as np
+        if isinstance(frames, np.ndarray):
+            # Diffusers returns shape (batch, num_frames, H, W, C) or (batch, num_frames, C, H, W)
+            if frames.ndim == 5:
+                frames = frames[0]  # Take first batch -> (num_frames, H, W, C)
+            if frames.ndim == 4:
+                # Convert to list of individual frames
+                frames = [frames[i] for i in range(frames.shape[0])]
+        # Handle nested list: [[frame1, frame2, ...]]
+        elif isinstance(frames, list) and len(frames) > 0 and isinstance(frames[0], list):
+            frames = frames[0]
+
         return frames
     
     def save_output(self, result: List[Any], output_path: str, **kwargs) -> str:
