@@ -300,20 +300,21 @@ class TestVideoOutputBugFix:
             temp_path = f.name
 
         try:
-            # Mock ffmpeg subprocess call
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stderr="")
+            # Mock ffmpeg availability and subprocess call
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr="")
 
-                result = save_video(frames, temp_path, fps=24)
+                    result = save_video(frames, temp_path, fps=24)
 
-                assert result == temp_path
-                assert mock_run.called
+                    assert result == temp_path
+                    assert mock_run.called
 
-                # Verify ffmpeg was called with correct parameters
-                call_args = mock_run.call_args[0][0]
-                assert "ffmpeg" in call_args
-                assert "-framerate" in call_args
-                assert "24" in call_args
+                    # Verify ffmpeg was called with correct parameters
+                    call_args = mock_run.call_args[0][0]
+                    assert "ffmpeg" in call_args
+                    assert "-framerate" in call_args
+                    assert "24" in call_args
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -334,14 +335,15 @@ class TestVideoOutputBugFix:
             temp_path = f.name
 
         try:
-            # Mock ffmpeg subprocess call
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stderr="")
+            # Mock ffmpeg availability and subprocess call
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr="")
 
-                result = save_video(frames, temp_path, fps=24)
+                    result = save_video(frames, temp_path, fps=24)
 
-                assert result == temp_path
-                assert mock_run.called
+                    assert result == temp_path
+                    assert mock_run.called
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -361,14 +363,15 @@ class TestVideoOutputBugFix:
             temp_path = f.name
 
         try:
-            # Mock ffmpeg subprocess call
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stderr="")
+            # Mock ffmpeg availability and subprocess call
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr="")
 
-                result = save_video(frames, temp_path, fps=24)
+                    result = save_video(frames, temp_path, fps=24)
 
-                assert result == temp_path
-                assert mock_run.called
+                    assert result == temp_path
+                    assert mock_run.called
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -388,42 +391,49 @@ class TestVideoOutputBugFix:
             temp_path = f.name
 
         try:
-            # Mock ffmpeg subprocess call
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stderr="")
+            # Mock ffmpeg availability and subprocess call
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr="")
 
-                result = save_video(frames, temp_path, fps=24)
+                    result = save_video(frames, temp_path, fps=24)
 
-                assert result == temp_path
-                assert mock_run.called
+                    assert result == temp_path
+                    assert mock_run.called
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
 
     def test_save_video_raises_on_empty_frames(self):
         """save_video should raise ValueError for empty frames."""
+        from unittest.mock import patch
         from hftool.io.output_handler import save_video
 
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
             temp_path = f.name
 
         try:
-            with pytest.raises(ValueError, match="No frames to save"):
-                save_video([], temp_path, fps=24)
+            # Mock ffmpeg availability so we can test the frame validation
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with pytest.raises(ValueError, match="No frames to save"):
+                    save_video([], temp_path, fps=24)
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
 
     def test_save_video_raises_on_none_frames(self):
         """save_video should raise ValueError for None frames."""
+        from unittest.mock import patch
         from hftool.io.output_handler import save_video
 
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
             temp_path = f.name
 
         try:
-            with pytest.raises(ValueError, match="No frames to save"):
-                save_video(None, temp_path, fps=24)
+            # Mock ffmpeg availability so we can test the frame validation
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with pytest.raises(ValueError, match="No frames to save"):
+                    save_video(None, temp_path, fps=24)
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -443,15 +453,16 @@ class TestVideoOutputBugFix:
             temp_path = f.name
 
         try:
-            # Mock ffmpeg subprocess call
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stderr="")
+            # Mock ffmpeg availability and subprocess call
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr="")
 
-                save_video(frames, temp_path, fps=30)
+                    save_video(frames, temp_path, fps=30)
 
-                call_args = mock_run.call_args[0][0]
-                fps_index = call_args.index("-framerate")
-                assert call_args[fps_index + 1] == "30"
+                    call_args = mock_run.call_args[0][0]
+                    fps_index = call_args.index("-framerate")
+                    assert call_args[fps_index + 1] == "30"
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -471,15 +482,16 @@ class TestVideoOutputBugFix:
             temp_path = f.name
 
         try:
-            # Mock ffmpeg subprocess call
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stderr="")
+            # Mock ffmpeg availability and subprocess call
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stderr="")
 
-                save_video(frames, temp_path, codec="libx265")
+                    save_video(frames, temp_path, codec="libx265")
 
-                call_args = mock_run.call_args[0][0]
-                codec_index = call_args.index("-c:v")
-                assert call_args[codec_index + 1] == "libx265"
+                    call_args = mock_run.call_args[0][0]
+                    codec_index = call_args.index("-c:v")
+                    assert call_args[codec_index + 1] == "libx265"
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -500,12 +512,13 @@ class TestVideoOutputBugFix:
             temp_path = f.name
 
         try:
-            # Mock ffmpeg subprocess call to fail
-            with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = CalledProcessError(1, "ffmpeg", stderr="encoding error")
+            # Mock ffmpeg availability and subprocess call to fail
+            with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.side_effect = CalledProcessError(1, "ffmpeg", stderr="encoding error")
 
-                with pytest.raises(RuntimeError, match="ffmpeg encoding failed"):
-                    save_video(frames, temp_path, fps=24)
+                    with pytest.raises(RuntimeError, match="ffmpeg encoding failed"):
+                        save_video(frames, temp_path, fps=24)
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
