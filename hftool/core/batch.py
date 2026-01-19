@@ -282,12 +282,13 @@ def process_batch(
         start_time = time.time()
         
         try:
-            # Execute task
+            # Execute task (filter out internal keys starting with _)
+            filtered_kwargs = {k: v for k, v in extra_kwargs.items() if not k.startswith("_")}
             result = task_handler.execute(
                 model=model_to_load,
                 input_data=input_path,
                 output_path=output_path,
-                **extra_kwargs
+                **filtered_kwargs
             )
             
             exec_time = time.time() - start_time

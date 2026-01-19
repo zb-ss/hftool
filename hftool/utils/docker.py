@@ -254,6 +254,7 @@ def get_docker_run_command(
     workdir: Optional[str] = None,
     hf_token: Optional[str] = None,
     extra_volumes: Optional[List[str]] = None,
+    gpu_indices: Optional[List[int]] = None,
 ) -> List[str]:
     """Build the docker run command for the detected hardware.
 
@@ -263,6 +264,7 @@ def get_docker_run_command(
         workdir: Working directory (default: current directory)
         hf_token: HuggingFace token (optional)
         extra_volumes: Additional volume mounts
+        gpu_indices: Specific GPU indices to use (None = all GPUs)
 
     Returns:
         List of command arguments for subprocess
@@ -278,8 +280,18 @@ def get_docker_run_command(
 
     cmd = ["docker", "run", "--rm", "-it"]
 
-    # Platform-specific GPU flags
+    # Run as current user to avoid permission issues with created files
+    # This ensures output files are owned by the host user, not root
+    try:
+        uid = os.getuid()
+        gid = os.getgid()
+        cmd.extend(["--user", f"{uid}:{gid}"])
+    except (AttributeError, OSError):
+        pass  # Windows doesn't have getuid/getgid
+
+    # Platform-specific GPU flags with optional GPU selection
     if hardware.platform == GPUPlatform.ROCM:
+        # For ROCm, /dev/kfd is always shared but GPUs are restricted via env vars
         cmd.extend([
             "--device=/dev/kfd",
             "--device=/dev/dri",
@@ -291,18 +303,35 @@ def get_docker_run_command(
         gfx_version = os.environ.get("HSA_OVERRIDE_GFX_VERSION")
         if gfx_version:
             cmd.extend(["-e", f"HSA_OVERRIDE_GFX_VERSION={gfx_version}"])
+        # GPU isolation via HIP_VISIBLE_DEVICES and ROCR_VISIBLE_DEVICES
+        if gpu_indices:
+            visible = ",".join(str(i) for i in gpu_indices)
+            cmd.extend(["-e", f"HIP_VISIBLE_DEVICES={visible}"])
+            cmd.extend(["-e", f"ROCR_VISIBLE_DEVICES={visible}"])
 
     elif hardware.platform == GPUPlatform.CUDA:
-        cmd.extend(["--gpus", "all"])
+        # For NVIDIA, use --gpus flag with device selection
+        if gpu_indices:
+            device_str = ",".join(str(i) for i in gpu_indices)
+            cmd.extend(["--gpus", f'"device={device_str}"'])
+            cmd.extend(["-e", f"CUDA_VISIBLE_DEVICES={device_str}"])
+        else:
+            cmd.extend(["--gpus", "all"])
 
     # Shared memory for PyTorch DataLoader
     cmd.extend(["--shm-size", "16g"])
 
-    # Volume mounts
+    # Volume mounts (use /data paths that work for any user)
     cmd.extend([
-        "-v", f"{hf_home}:/root/.cache/huggingface",
-        "-v", f"{hftool_config}:/root/.hftool",
+        "-v", f"{hf_home}:/data/huggingface",
+        "-v", f"{hftool_config}:/data/hftool",
         "-v", f"{workdir}:/workspace",
+    ])
+
+    # Tell tools where to find their data (works for any user, including non-root)
+    cmd.extend([
+        "-e", "HF_HOME=/data/huggingface",
+        "-e", "HFTOOL_CONFIG=/data/hftool",
     ])
 
     # Mount custom models directory if set
@@ -425,6 +454,7 @@ def run_in_docker(
     hftool_args: List[str],
     hardware: Optional[HardwareInfo] = None,
     auto_setup: bool = True,
+    gpu_indices: Optional[List[int]] = None,
 ) -> int:
     """Run hftool command in Docker container.
 
@@ -432,6 +462,7 @@ def run_in_docker(
         hftool_args: Arguments to pass to hftool
         hardware: Pre-detected hardware (will detect if None)
         auto_setup: Automatically build/pull image if missing
+        gpu_indices: Specific GPU indices to use (None = all GPUs)
 
     Returns:
         Exit code from the container
@@ -465,7 +496,7 @@ def run_in_docker(
             print(f"  cd <hftool-repo> && docker build -f docker/Dockerfile.{hardware.platform.value} -t {hardware.recommended_image} .")
             return 1
 
-    cmd = get_docker_run_command(hardware, hftool_args)
+    cmd = get_docker_run_command(hardware, hftool_args, gpu_indices=gpu_indices)
 
     try:
         result = subprocess.run(cmd)
