@@ -321,9 +321,10 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         """Load LTX-2 pipeline.
 
         LTX-2 is a 19B parameter audio-video foundation model from Lightricks.
-        Requires CUDA 12.7+ and diffusers with LTX2Pipeline support.
+        Requires diffusers main branch (0.37.0+) with LTX2Pipeline support.
         """
         import click
+        from hftool.utils.errors import HFToolError
 
         if "torch_dtype" not in kwargs:
             kwargs["torch_dtype"] = dtype
@@ -333,20 +334,30 @@ class TextToVideoTask(TextInputMixin, BaseTask):
 
         try:
             from diffusers import LTX2Pipeline
-            click.echo("Loading LTX-2 pipeline...")
-            if subfolder:
-                click.echo(f"Using checkpoint: {subfolder}")
-                pipe = LTX2Pipeline.from_pretrained(model, subfolder=subfolder, **kwargs)
-            else:
-                pipe = LTX2Pipeline.from_pretrained(model, **kwargs)
-        except ImportError:
-            # Fallback to generic DiffusionPipeline if LTX2Pipeline not available
-            click.echo("LTX2Pipeline not found, using generic DiffusionPipeline...")
-            from diffusers import DiffusionPipeline
-            if subfolder:
-                pipe = DiffusionPipeline.from_pretrained(model, subfolder=subfolder, **kwargs)
-            else:
-                pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
+        except (ImportError, AttributeError):
+            # LTX2Pipeline is only available in diffusers 0.37.0+ (currently unreleased)
+            click.echo(
+                "LTX2Pipeline not available. Installing diffusers from main branch..."
+            )
+            # Auto-install diffusers from main branch
+            from hftool.core.download import install_pip_dependencies
+            success = install_pip_dependencies(
+                ["git+https://github.com/huggingface/diffusers"],
+                force=True
+            )
+            if success:
+                click.echo("Diffusers updated. Please restart hftool to use LTX-2.")
+            raise HFToolError(
+                "LTX-2 requires diffusers main branch (0.37.0+) which was just installed.",
+                suggestion="Please restart hftool to use the updated diffusers library."
+            )
+
+        click.echo("Loading LTX-2 pipeline...")
+        if subfolder:
+            click.echo(f"Using checkpoint: {subfolder}")
+            pipe = LTX2Pipeline.from_pretrained(model, subfolder=subfolder, **kwargs)
+        else:
+            pipe = LTX2Pipeline.from_pretrained(model, **kwargs)
 
         return pipe
     

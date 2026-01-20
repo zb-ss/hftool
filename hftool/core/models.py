@@ -247,8 +247,8 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             name="LTX-2 (19B)",
             model_type=ModelType.DIFFUSERS,
             size_gb=40.0,
-            description="LTX-2 audio-video foundation model (19B params, requires CUDA 12.7+)",
-            pip_dependencies=["diffusers>=0.36.0"],
+            description="LTX-2 audio-video foundation model (19B params, requires diffusers main branch)",
+            pip_dependencies=["git+https://github.com/huggingface/diffusers"],  # LTX2Pipeline requires unreleased diffusers
             metadata={
                 "num_inference_steps": 50,
                 "guidance_scale": 3.0,
@@ -263,8 +263,8 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             name="LTX-2 Distilled (19B)",
             model_type=ModelType.DIFFUSERS,
             size_gb=40.0,
-            description="LTX-2 distilled version (8 steps, faster inference)",
-            pip_dependencies=["diffusers>=0.36.0"],
+            description="LTX-2 distilled version (8 steps, faster inference, requires diffusers main branch)",
+            pip_dependencies=["git+https://github.com/huggingface/diffusers"],  # LTX2Pipeline requires unreleased diffusers
             metadata={
                 "num_inference_steps": 8,
                 "guidance_scale": 1.0,
@@ -318,8 +318,8 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             name="LTX-2 I2V (19B)",
             model_type=ModelType.DIFFUSERS,
             size_gb=40.0,
-            description="LTX-2 image-to-video (19B params, requires CUDA 12.7+)",
-            pip_dependencies=["diffusers>=0.36.0"],
+            description="LTX-2 image-to-video (19B params, requires diffusers main branch)",
+            pip_dependencies=["git+https://github.com/huggingface/diffusers"],  # LTX2Pipeline requires unreleased diffusers
             metadata={
                 "num_inference_steps": 50,
                 "guidance_scale": 3.0,
@@ -334,8 +334,8 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             name="LTX-2 Distilled I2V (19B)",
             model_type=ModelType.DIFFUSERS,
             size_gb=40.0,
-            description="LTX-2 distilled image-to-video (8 steps, faster)",
-            pip_dependencies=["diffusers>=0.36.0"],
+            description="LTX-2 distilled image-to-video (8 steps, faster, requires diffusers main branch)",
+            pip_dependencies=["git+https://github.com/huggingface/diffusers"],  # LTX2Pipeline requires unreleased diffusers
             metadata={
                 "num_inference_steps": 8,
                 "guidance_scale": 1.0,
