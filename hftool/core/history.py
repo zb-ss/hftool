@@ -93,7 +93,13 @@ class History:
     
     def __init__(self):
         """Initialize history manager."""
-        self._history_file = Path.home() / ".hftool" / "history.json"
+        # Use HFTOOL_CONFIG env var if set (e.g., in Docker), otherwise use home directory
+        import os
+        config_dir = os.environ.get("HFTOOL_CONFIG")
+        if config_dir:
+            self._history_file = Path(config_dir) / "history.json"
+        else:
+            self._history_file = Path.home() / ".hftool" / "history.json"
         self._entries: List[HistoryEntry] = []
         self._next_id = 1
         self._loaded = False

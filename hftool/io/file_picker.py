@@ -10,6 +10,12 @@ Supports multiple modes:
 - @@ : Pick from recent files (history)
 
 Uses InquirerPy when available, falls back to click-based selection.
+
+Docker Support:
+When running in Docker, the file picker automatically:
+- Detects the Docker environment via HFTOOL_IN_DOCKER
+- Uses /home/host as the mounted home directory
+- Translates paths between host and container
 """
 
 import os
@@ -18,6 +24,37 @@ import click
 from pathlib import Path
 from typing import Optional, List, Set, Tuple
 from enum import Enum, auto
+
+
+def is_running_in_docker() -> bool:
+    """Check if running inside a Docker container.
+
+    Returns:
+        True if running in Docker
+    """
+    return os.environ.get("HFTOOL_IN_DOCKER") == "1"
+
+
+def get_docker_home() -> Optional[Path]:
+    """Get the mounted home directory path when running in Docker.
+
+    Returns:
+        Path to /home/host if in Docker, None otherwise
+    """
+    if is_running_in_docker():
+        host_home = os.environ.get("HFTOOL_HOST_HOME", "/home/host")
+        if Path(host_home).exists():
+            return Path(host_home)
+    return None
+
+
+def get_real_home() -> Optional[str]:
+    """Get the actual host home directory path (for display purposes).
+
+    Returns:
+        The real home path on the host, or None if not in Docker
+    """
+    return os.environ.get("HFTOOL_REAL_HOME")
 
 
 class FileType(Enum):
@@ -97,8 +134,11 @@ class FilePicker:
         if reference == "@.":
             return self._pick_interactive(Path.cwd(), recursive=True)
         
-        # @~ - Pick from home directory
+        # @~ - Pick from home directory (or Docker-mounted home)
         if reference == "@~":
+            docker_home = get_docker_home()
+            if docker_home:
+                return self._pick_interactive(docker_home, recursive=False)
             return self._pick_interactive(Path.home(), recursive=False)
         
         # @/path/ - Pick from specific directory
@@ -153,42 +193,69 @@ class FilePicker:
     
     def _validate_path(self, path: Path) -> None:
         """Validate path for security.
-        
+
         Args:
             path: Path to validate
-        
+
         Raises:
             ValueError: If path is not allowed
         """
         # Security: Ensure path is within safe boundaries
         resolved = path.resolve()
         home = Path.home().resolve()
-        
+
         # Allow home directory and subdirectories
         try:
             resolved.relative_to(home)
             return
         except ValueError:
             pass
-        
+
         # Allow current working directory and subdirectories
         try:
             resolved.relative_to(Path.cwd().resolve())
             return
         except ValueError:
             pass
-        
+
         # Allow /tmp
         try:
             resolved.relative_to(Path("/tmp"))
             return
         except ValueError:
             pass
-        
+
+        # Allow Docker-mounted paths when running in Docker
+        if is_running_in_docker():
+            docker_home = get_docker_home()
+            if docker_home:
+                try:
+                    resolved.relative_to(docker_home.resolve())
+                    return
+                except ValueError:
+                    pass
+
+            # Allow /workspace (Docker working directory)
+            try:
+                resolved.relative_to(Path("/workspace"))
+                return
+            except ValueError:
+                pass
+
+            # Allow /home/host (Docker home mount)
+            try:
+                resolved.relative_to(Path("/home/host"))
+                return
+            except ValueError:
+                pass
+
         # Not in allowed directories
+        allowed = [f"home: {home}", f"cwd: {Path.cwd()}", "/tmp"]
+        if is_running_in_docker():
+            allowed.extend(["/workspace", "/home/host"])
         raise ValueError(
             f"Path '{path}' is outside allowed directories "
-            f"(home: {home}, cwd: {Path.cwd()}, /tmp)"
+            f"({', '.join(allowed)})"
         )
     
     def _pick_from_history(self) -> str:
