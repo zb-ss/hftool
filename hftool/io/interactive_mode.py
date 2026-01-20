@@ -347,29 +347,58 @@ def _get_input(inquirer, task: str) -> str:
 
 def _get_file_with_navigation(inquirer, input_type: str, file_type, task: str) -> str:
     """Get a file path with directory navigation support.
-    
+
     Args:
         inquirer: InquirerPy module
         input_type: Type of input (image, audio, video)
         file_type: FileType enum
         task: Task name
-    
+
     Returns:
         Selected file path
     """
-    from hftool.io.file_picker import FilePicker
-    
+    from hftool.io.file_picker import FilePicker, is_running_in_docker, get_docker_home, get_real_home
+
+    # Check if running in Docker and show helpful info
+    in_docker = is_running_in_docker()
+    if in_docker:
+        docker_home = get_docker_home()
+        real_home = get_real_home()
+        if docker_home and real_home:
+            click.echo("")
+            click.echo(click.style("Running in Docker container", fg="yellow"))
+            click.echo(click.style(f"  Host home ({real_home}) is mounted at /home/host", fg="white", dim=True))
+            click.echo(click.style("  Working directory is mounted at /workspace", fg="white", dim=True))
+            click.echo("")
+
     while True:
+        # Build choices based on environment
+        choices = []
+
+        if in_docker:
+            # Docker-specific options
+            choices.extend([
+                {"name": "Browse files (workspace - current directory)", "value": "@"},
+                {"name": "Browse files (host home directory)", "value": "@~"},
+                {"name": "Browse files (/home/host)", "value": "@/home/host"},
+            ])
+        else:
+            # Native options
+            choices.extend([
+                {"name": "Browse files (current directory)", "value": "@"},
+                {"name": "Browse files (home directory)", "value": "@~"},
+            ])
+
+        choices.extend([
+            {"name": "Recent files from history", "value": "@@"},
+            {"name": "Enter path manually", "value": "manual"},
+        ])
+
         # Show file picker options
         input_method = inquirer.select(
             message=f"How to provide {input_type} input?",
-            choices=[
-                {"name": "Browse files (current directory)", "value": "@"},
-                {"name": "Browse files (home directory)", "value": "@~"},
-                {"name": "Recent files from history", "value": "@@"},
-                {"name": "Enter path manually", "value": "manual"},
-            ],
-            default="@",
+            choices=choices,
+            default="@~" if in_docker else "@",
         ).execute()
         
         if input_method == "manual":
@@ -395,27 +424,33 @@ def _get_file_with_navigation(inquirer, input_type: str, file_type, task: str) -
 
 def _pick_file_with_navigation(inquirer, picker, reference: str, task: str, file_type) -> Optional[str]:
     """Pick a file with directory navigation support and fuzzy search.
-    
+
     Args:
         inquirer: InquirerPy module
         picker: FilePicker instance
         reference: File reference string (@, @~, @@)
         task: Task name
         file_type: FileType enum
-    
+
     Returns:
         Selected file path or None to go back to method selection
     """
     from InquirerPy.base.control import Choice
     from InquirerPy.separator import Separator
-    
+    from hftool.io.file_picker import is_running_in_docker, get_docker_home
+
     # Handle history reference directly
     if reference == "@@":
         return picker.resolve_reference(reference, task=task)
-    
+
     # Determine starting directory
     if reference == "@~":
-        current_dir = Path.home()
+        # Use Docker-mounted home if in Docker
+        docker_home = get_docker_home()
+        if docker_home:
+            current_dir = docker_home
+        else:
+            current_dir = Path.home()
     elif reference.startswith("@/"):
         current_dir = Path(reference[1:]).expanduser().resolve()
     else:

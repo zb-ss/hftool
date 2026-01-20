@@ -1,6 +1,6 @@
 """Text-to-video task handler.
 
-Supports HunyuanVideo-1.5, CogVideoX, Wan2.2, and other diffusers-based video models.
+Supports HunyuanVideo-1.5, CogVideoX, Wan2.2, LTX-2, and other diffusers-based video models.
 """
 
 from typing import Any, Dict, List, Optional
@@ -10,11 +10,12 @@ from hftool.io.output_handler import save_video
 
 class TextToVideoTask(TextInputMixin, BaseTask):
     """Handler for text-to-video generation using diffusers.
-    
+
     Supported models:
     - HunyuanVideo-1.5 (hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-*)
     - CogVideoX (THUDM/CogVideoX-5b, THUDM/CogVideoX-5b-I2V)
     - Wan2.1/2.2 (Wan-AI/Wan2.1-T2V-*)
+    - LTX-2 (Lightricks/LTX-2) - 19B audio-video foundation model
     - And other diffusers-compatible video models
     """
     
@@ -41,6 +42,20 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             "num_frames": 81,
             "num_inference_steps": 50,
             "guidance_scale": 5.0,
+        },
+        "LTX-2": {
+            "num_frames": 97,  # ~4 seconds at 24fps
+            "num_inference_steps": 50,
+            "guidance_scale": 3.0,
+            "height": 480,
+            "width": 848,  # 16:9 aspect ratio
+        },
+        "ltx-2-19b-distilled": {
+            "num_frames": 97,
+            "num_inference_steps": 8,  # Distilled model uses fewer steps
+            "guidance_scale": 1.0,
+            "height": 480,
+            "width": 848,
         },
     }
     
@@ -164,6 +179,8 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             pipe = self._load_cogvideox(model, dtype, **load_kwargs)
         elif "wan" in model_lower:
             pipe = self._load_wan(model, dtype, **load_kwargs)
+        elif "ltx" in model_lower:
+            pipe = self._load_ltx2(model, dtype, **load_kwargs)
         else:
             # Generic video pipeline
             from diffusers import DiffusionPipeline
@@ -298,6 +315,39 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             kwargs["torch_dtype"] = dtype
         from diffusers import DiffusionPipeline
         pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
+        return pipe
+
+    def _load_ltx2(self, model: str, dtype, **kwargs) -> Any:
+        """Load LTX-2 pipeline.
+
+        LTX-2 is a 19B parameter audio-video foundation model from Lightricks.
+        Requires CUDA 12.7+ and diffusers with LTX2Pipeline support.
+        """
+        import click
+
+        if "torch_dtype" not in kwargs:
+            kwargs["torch_dtype"] = dtype
+
+        # Get subfolder from metadata if available (for specific checkpoints)
+        subfolder = kwargs.pop("subfolder", None)
+
+        try:
+            from diffusers import LTX2Pipeline
+            click.echo("Loading LTX-2 pipeline...")
+            if subfolder:
+                click.echo(f"Using checkpoint: {subfolder}")
+                pipe = LTX2Pipeline.from_pretrained(model, subfolder=subfolder, **kwargs)
+            else:
+                pipe = LTX2Pipeline.from_pretrained(model, **kwargs)
+        except ImportError:
+            # Fallback to generic DiffusionPipeline if LTX2Pipeline not available
+            click.echo("LTX2Pipeline not found, using generic DiffusionPipeline...")
+            from diffusers import DiffusionPipeline
+            if subfolder:
+                pipe = DiffusionPipeline.from_pretrained(model, subfolder=subfolder, **kwargs)
+            else:
+                pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
+
         return pipe
     
     def get_default_kwargs(self) -> Dict[str, Any]:

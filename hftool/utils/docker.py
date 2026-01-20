@@ -255,6 +255,7 @@ def get_docker_run_command(
     hf_token: Optional[str] = None,
     extra_volumes: Optional[List[str]] = None,
     gpu_indices: Optional[List[int]] = None,
+    mount_home: bool = True,
 ) -> List[str]:
     """Build the docker run command for the detected hardware.
 
@@ -265,11 +266,13 @@ def get_docker_run_command(
         hf_token: HuggingFace token (optional)
         extra_volumes: Additional volume mounts
         gpu_indices: Specific GPU indices to use (None = all GPUs)
+        mount_home: Mount user's home directory for file browsing (default: True)
 
     Returns:
         List of command arguments for subprocess
     """
     workdir = workdir or os.getcwd()
+    user_home = os.path.expanduser("~")
     hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
     hftool_config = os.environ.get("HFTOOL_CONFIG", os.path.expanduser("~/.hftool"))
 
@@ -328,6 +331,16 @@ def get_docker_run_command(
         "-v", f"{workdir}:/workspace",
     ])
 
+    # Mount user's home directory for file browsing in interactive mode
+    # This allows the file picker to access files outside the working directory
+    if mount_home:
+        cmd.extend(["-v", f"{user_home}:/home/host:ro"])  # Read-only for safety
+        cmd.extend(["-e", f"HFTOOL_HOST_HOME=/home/host"])
+        cmd.extend(["-e", f"HFTOOL_REAL_HOME={user_home}"])
+
+    # Mark that we're running in Docker (for file picker path handling)
+    cmd.extend(["-e", "HFTOOL_IN_DOCKER=1"])
+
     # Tell tools where to find their data (works for any user, including non-root)
     cmd.extend([
         "-e", "HF_HOME=/data/huggingface",
@@ -351,6 +364,19 @@ def get_docker_run_command(
     if hf_token or os.environ.get("HF_TOKEN"):
         token = hf_token or os.environ.get("HF_TOKEN")
         cmd.extend(["-e", f"HF_TOKEN={token}"])
+
+    # Pass through HuggingFace Hub settings (from ~/.hftool/.env or environment)
+    hf_passthrough_vars = [
+        "HF_HUB_ENABLE_HF_TRANSFER",  # Disable xet downloads if set to 0
+        "HF_HUB_DISABLE_PROGRESS_BARS",
+        "HF_HUB_DISABLE_SYMLINKS_WARNING",
+        "HF_HUB_OFFLINE",
+        "HUGGINGFACE_HUB_CACHE",
+    ]
+    for var in hf_passthrough_vars:
+        value = os.environ.get(var)
+        if value:
+            cmd.extend(["-e", f"{var}={value}"])
 
     # Pass through debug and logging settings
     if os.environ.get("HFTOOL_DEBUG"):
@@ -509,8 +535,16 @@ def run_in_docker(
 
 
 # Configuration file for Docker mode preference
-_CONFIG_DIR = Path.home() / ".hftool"
-_DOCKER_CONFIG_FILE = _CONFIG_DIR / "docker.conf"
+def _get_config_dir() -> Path:
+    """Get the hftool config directory, respecting HFTOOL_CONFIG env var."""
+    config_dir = os.environ.get("HFTOOL_CONFIG")
+    if config_dir:
+        return Path(config_dir)
+    return Path.home() / ".hftool"
+
+def _get_docker_config_file() -> Path:
+    """Get the Docker preference config file path."""
+    return _get_config_dir() / "docker.conf"
 
 
 def get_docker_preference() -> Optional[str]:
@@ -519,9 +553,10 @@ def get_docker_preference() -> Optional[str]:
     Returns:
         "docker", "native", or None if not set
     """
-    if _DOCKER_CONFIG_FILE.exists():
+    config_file = _get_docker_config_file()
+    if config_file.exists():
         try:
-            content = _DOCKER_CONFIG_FILE.read_text().strip()
+            content = config_file.read_text().strip()
             if content in ("docker", "native"):
                 return content
         except Exception:
@@ -535,8 +570,9 @@ def set_docker_preference(mode: str) -> None:
     Args:
         mode: "docker" or "native"
     """
-    _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    _DOCKER_CONFIG_FILE.write_text(mode)
+    config_dir = _get_config_dir()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    _get_docker_config_file().write_text(mode)
 
 
 def should_use_docker(hardware: Optional[HardwareInfo] = None) -> bool:

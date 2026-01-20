@@ -69,10 +69,14 @@ STANDARD_TEST_PARAMS = {
 
 def get_benchmarks_file() -> Path:
     """Get path to benchmarks cache file.
-    
+
     Returns:
         Path to benchmarks.json
     """
+    # Use HFTOOL_CONFIG env var if set (e.g., in Docker), otherwise use home directory
+    config_dir = os.environ.get("HFTOOL_CONFIG")
+    if config_dir:
+        return Path(config_dir) / "benchmarks.json"
     return Path.home() / ".hftool" / "benchmarks.json"
 
 
