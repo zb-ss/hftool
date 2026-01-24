@@ -299,9 +299,27 @@ def get_docker_run_command(
             "--device=/dev/kfd",
             "--device=/dev/dri",
             "--security-opt", "seccomp=unconfined",
-            "--group-add", "video",
-            "--group-add", "render",
         ])
+        # Use numeric GIDs instead of group names for --user compatibility
+        # Group names inside container may not match host GIDs
+        added_gids = set()
+        try:
+            kfd_gid = os.stat("/dev/kfd").st_gid
+            cmd.extend(["--group-add", str(kfd_gid)])
+            added_gids.add(kfd_gid)
+        except OSError:
+            cmd.extend(["--group-add", "render"])
+        try:
+            # Get video group from any renderD* device
+            for entry in os.listdir("/dev/dri"):
+                if entry.startswith("renderD") or entry.startswith("card"):
+                    dri_gid = os.stat(f"/dev/dri/{entry}").st_gid
+                    if dri_gid not in added_gids:  # Don't add duplicate
+                        cmd.extend(["--group-add", str(dri_gid)])
+                        added_gids.add(dri_gid)
+                    break
+        except OSError:
+            cmd.extend(["--group-add", "video"])
         # Pass through HSA_OVERRIDE_GFX_VERSION if set
         gfx_version = os.environ.get("HSA_OVERRIDE_GFX_VERSION")
         if gfx_version:
