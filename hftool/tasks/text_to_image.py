@@ -103,17 +103,20 @@ class TextToImageTask(TextInputMixin, BaseTask):
         import click
         from hftool.utils.deps import check_dependencies
         check_dependencies(["diffusers", "torch", "accelerate"], extra="with_video")
-        
+
         import torch
-        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env
-        
+        from hftool.core.device import (
+            detect_device, get_optimal_dtype, get_device_info,
+            configure_rocm_env, get_multi_gpu_kwargs
+        )
+
         # Configure ROCm optimizations early (before any GPU operations)
         configure_rocm_env()
-        
+
         # Get device info
         device_info = get_device_info()
         device = self.device if self.device != "auto" else detect_device()
-        
+
         if self.dtype:
             dtype_map = {
                 "bfloat16": torch.bfloat16,
@@ -123,56 +126,32 @@ class TextToImageTask(TextInputMixin, BaseTask):
             dtype = dtype_map.get(self.dtype, torch.bfloat16)
         else:
             dtype = get_optimal_dtype(device)
-        
+
         self._model_name = model
-        
-        # Determine loading strategy
-        num_gpus = device_info.device_count if device == "cuda" else 0
-        
-        # Check multi-GPU settings
-        # HFTOOL_MULTI_GPU: "1"/"true"/"balanced" = use device_map, "0"/"false" = single GPU
-        multi_gpu_env = os.environ.get("HFTOOL_MULTI_GPU", "").lower()
-        force_multi_gpu = multi_gpu_env in ("1", "true", "yes", "balanced")
-        disable_multi_gpu = multi_gpu_env in ("0", "false", "no")
-        
-        # Auto-enable multi-GPU if multiple GPUs available and not explicitly disabled
-        use_multi_gpu = (num_gpus > 1 and not disable_multi_gpu) or force_multi_gpu
-        
+
+        # Get multi-GPU configuration (centralized logic)
+        gpu_config = get_multi_gpu_kwargs(reserve_per_gpu_gb=2.0)
+        if gpu_config["message"]:
+            click.echo(gpu_config["message"])
+
         # Check CPU offload settings (used when multi-GPU is not active)
-        # HFTOOL_CPU_OFFLOAD: 0=disabled (full GPU), 1=model offload, 2=sequential offload
         cpu_offload_env = os.environ.get("HFTOOL_CPU_OFFLOAD", "").lower()
         force_cpu_offload = cpu_offload_env in ("1", "2", "true", "yes")
         disable_cpu_offload = cpu_offload_env in ("0", "false", "no")
         use_sequential = cpu_offload_env == "2"
-        
+
         # Try to load with appropriate pipeline
         model_lower = model.lower()
         is_zimage = "z-image" in model_lower or "zimage" in model_lower
         is_flux = "flux" in model_lower
-        
+
         pipe = None
         load_kwargs = {"torch_dtype": dtype, **kwargs}
-        
-        # Configure device_map for multi-GPU
-        if use_multi_gpu and num_gpus > 1:
-            click.echo(f"Multi-GPU mode: Distributing model across {num_gpus} GPUs...")
-            # Use "balanced" to evenly distribute model components across GPUs
-            load_kwargs["device_map"] = "balanced"
-            # Set max_memory per GPU to help with distribution
-            # Get memory for each GPU
-            max_memory = {}
-            for i in range(num_gpus):
-                try:
-                    mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
-                    # Reserve ~2GB for overhead
-                    max_memory[i] = f"{int(mem_gb - 2)}GB"
-                except Exception:
-                    pass
-            if max_memory:
-                load_kwargs["max_memory"] = max_memory
-                click.echo(f"GPU memory allocation: {max_memory}")
-        elif num_gpus > 1:
-            click.echo(f"Multi-GPU detected ({num_gpus} GPUs) but disabled, using single GPU")
+
+        # Apply multi-GPU configuration
+        if gpu_config["use_multi_gpu"]:
+            load_kwargs["device_map"] = gpu_config["device_map"]
+            load_kwargs["max_memory"] = gpu_config["max_memory"]
         
         # Try ZImagePipeline for Z-Image models
         if is_zimage:

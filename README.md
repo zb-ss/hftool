@@ -15,7 +15,7 @@ A CLI for running HuggingFace models, optimized for AMD ROCm.
 ### AI Tasks
 - **Text-to-Image**: Z-Image-Turbo, Stable Diffusion XL, FLUX
 - **Image-to-Image**: Qwen Image Edit (advanced editing with multi-image support), FLUX.2 Klein (fast multi-ref), SDXL Refiner
-- **Text-to-Video**: HunyuanVideo-1.5, CogVideoX, Wan2.2
+- **Text-to-Video**: LTX-2, HunyuanVideo-1.5, CogVideoX, Wan2.2
 - **Text-to-Speech**: Bark, MMS-TTS, GLM-TTS
 - **Speech-to-Text**: Whisper (with timestamps and SRT export)
 - **Plus**: Text generation, classification, translation, and more via transformers pipelines
@@ -1008,10 +1008,18 @@ pipx runpip hftool install --upgrade diffusers>=0.36.0
 
 ### Text-to-Video
 
-Generate videos with HunyuanVideo-1.5:
+Generate videos with LTX-2, HunyuanVideo, or other models:
 
 ```bash
-# Basic usage (480p, ~2.5 second video)
+# LTX-2 (fast, high quality - requires diffusers main branch)
+hftool -t t2v -m ltx2 -i "A cat playing with a ball in slow motion" -o cat.mp4
+
+# LTX-2 Image-to-Video (animate an image)
+hftool -t i2v -m ltx2-i2v \
+       -i '{"image": "photo.jpg", "prompt": "The person waves hello"}' \
+       -o animated.mp4
+
+# HunyuanVideo-1.5 (480p, ~2.5 second video)
 hftool -t t2v -i "A person walking on a beach at sunset" -o beach.mp4
 
 # With specific model and parameters
@@ -1020,17 +1028,30 @@ hftool -t t2v -m hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v \
        -o clouds.mp4 \
        -- --num_frames 61 --num_inference_steps 30
 
-# Image-to-Video (animate an image)
+# HunyuanVideo Image-to-Video
 hftool -t i2v -m hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v \
        -i '{"image": "photo.jpg", "prompt": "The person waves hello"}' \
        -o animated.mp4
 ```
 
-**Other supported models:**
+**Supported models:**
+- `Lightricks/LTX-2` (ltx2, ltx2-i2v) - Fast, high quality. Requires diffusers main branch
+- `hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v` - High quality 480p
 - `THUDM/CogVideoX-5b`
 - `Wan-AI/Wan2.1-T2V-1.3B`
 
-**Note:** Requires system `ffmpeg` for video encoding.
+**LTX-2 parameters** (pass after `--`):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--seed` | random | Random seed for reproducibility |
+| `--num_inference_steps` | 50 | Number of denoising steps |
+| `--guidance_scale` | 3.0 | CFG guidance scale |
+| `--num_frames` | 97 | Number of frames to generate |
+| `--height` | 512 | Video height (must be divisible by 32) |
+| `--width` | 768 | Video width (must be divisible by 32) |
+
+**Note:** Requires system `ffmpeg` for video encoding. LTX-2 requires diffusers from main branch (auto-installed on first use).
 
 ---
 
@@ -1180,6 +1201,8 @@ Commands:
 | `HFTOOL_AUTO_DOWNLOAD` | Auto-download models without prompting | `0` (disabled) |
 | `HFTOOL_AUTO_OPEN` | Auto-open output files | `auto` (media files only) |
 | `HFTOOL_GPU` | GPU selection: `auto`, `all`, `0`, `1`, `0,1` | (none) |
+| `HFTOOL_MULTI_GPU` | Multi-GPU mode: `1`/`balanced` enables, `0` disables | auto-detect |
+| `HFTOOL_CPU_OFFLOAD` | CPU offload level: `0` disabled, `1` model, `2` sequential | (none) |
 | `HFTOOL_ROCM_PATH` | Path to ROCm libraries (e.g., Ollama's bundled ROCm) | (none) |
 | `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture override (e.g., `11.0.0` for RX 7900) | (none) |
 | `HF_TOKEN` | HuggingFace token for gated models | (none) |
@@ -1207,6 +1230,7 @@ hftool is optimized for AMD GPUs with ROCm 6.x:
 | Image-to-Image | Qwen Image Edit | ~20-24 GB | Use CPU offload on 24GB cards |
 | Image-to-Image | FLUX.2 Klein | ~29 GB | RTX 4090+, non-commercial |
 | Image-to-Image | SDXL Refiner | ~8-10 GB | Fast, lower VRAM |
+| Text-to-Video | LTX-2 | ~40 GB | Use `--gpu all` for multi-GPU |
 | Text-to-Video | HunyuanVideo 480p | ~20-24 GB | Use CPU offload |
 | Text-to-Video | HunyuanVideo 720p | ~30-40 GB | Requires multi-GPU |
 | Text-to-Speech | Bark | ~2-4 GB | Easy |
@@ -1282,7 +1306,11 @@ hftool doctor
 | `--gpu 0` | Use specific GPU by index |
 | `--gpu 1` | Use specific GPU by index |
 | `--gpu 0,1` | Use multiple specific GPUs |
-| `--gpu all` | Use all GPUs (model parallelism for large models) |
+| `--gpu all` | Use all GPUs with model parallelism (distributes model across GPUs) |
+
+**How `--gpu all` works:**
+
+When you select `--gpu all`, hftool uses `device_map="balanced"` to automatically distribute model layers across all available GPUs. This is essential for large models that don't fit in a single GPU's VRAM. The centralized multi-GPU logic in `hftool/core/device.py` ensures consistent behavior across all task types (text-to-image, text-to-video, image-to-image, etc.).
 
 **Examples:**
 
@@ -1293,14 +1321,17 @@ hftool -t t2v -i "A cat running" -o cat.mp4 --gpu auto
 # Use specific GPU
 hftool -t t2v -i "A cat running" -o cat.mp4 --gpu 1
 
-# Use all GPUs for large models like HunyuanVideo
-hftool -t t2v -i "A cat running" -o cat.mp4 --gpu all
+# Use all GPUs for large models like LTX-2 or HunyuanVideo
+hftool -t t2v -m ltx2 -i "A cat running" -o cat.mp4 --gpu all
 
 # Docker with specific GPU
 hftool docker run --gpu 1 -- -t t2v -i "A cat" -o cat.mp4
 
 # Environment variable (useful in .env file)
 HFTOOL_GPU=1 hftool -t t2v -i "A cat" -o cat.mp4
+
+# Force multi-GPU mode via environment variable
+HFTOOL_MULTI_GPU=1 hftool -t t2v -m ltx2 -i "A cat" -o cat.mp4
 ```
 
 **Interactive Mode:** When using `hftool -I`, the wizard will show GPU selection with display detection for multi-GPU systems.
@@ -1361,6 +1392,7 @@ MIT License
 
 - [Z-Image](https://github.com/Tongyi-MAI/Z-Image) - State-of-the-art text-to-image
 - [Qwen Image Edit](https://huggingface.co/Qwen/Qwen-Image-Edit-2511) - Advanced image editing with character consistency
+- [LTX-2](https://huggingface.co/Lightricks/LTX-2) - Fast, high-quality video generation
 - [HunyuanVideo-1.5](https://huggingface.co/tencent/HunyuanVideo-1.5) - High-quality video generation
 - [Bark](https://huggingface.co/suno/bark) - High-quality TTS with sound effects
 - [Whisper](https://huggingface.co/openai/whisper-large-v3) - Speech recognition

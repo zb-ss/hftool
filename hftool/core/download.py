@@ -255,14 +255,28 @@ def check_dependency_satisfied(dep: str) -> bool:
     Returns:
         True if requirement is satisfied
     """
-    # Git URLs can't be version-checked, always return False to force install
+    import importlib.metadata
+
+    # Git URLs - extract package name and check if installed
+    # We can't check exact version but can check if package exists
     if dep.startswith("git+") or dep.startswith("https://"):
-        return False
+        # Extract package name from git URL
+        # e.g., "git+https://github.com/huggingface/diffusers" -> "diffusers"
+        url = dep.replace("git+", "").rstrip("/")
+        package_name = url.split("/")[-1].replace(".git", "")
+
+        try:
+            # Check if package is installed
+            importlib.metadata.version(package_name)
+            # Package is installed - assume git version is satisfied
+            # (User can force reinstall with --force if needed)
+            return True
+        except importlib.metadata.PackageNotFoundError:
+            return False
 
     try:
         from packaging.requirements import Requirement
         from packaging.version import Version
-        import importlib.metadata
 
         req = Requirement(dep)
         try:

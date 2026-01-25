@@ -9,6 +9,54 @@ from typing import Any, Optional, Union
 from pathlib import Path
 
 
+def translate_docker_path(path: str) -> str:
+    """Translate host paths to container paths when running in Docker.
+
+    When running in Docker, the user's home directory is mounted at /home/host.
+    This function translates absolute paths starting with the real home directory
+    to the container mount point.
+
+    Args:
+        path: Original file path (may be host path)
+
+    Returns:
+        Translated path for container, or original path if not in Docker
+        or path doesn't need translation.
+
+    Environment Variables Used:
+        HFTOOL_IN_DOCKER: Set to "1" when running in Docker
+        HFTOOL_REAL_HOME: Original host home path (e.g., /home/zashboy)
+        HFTOOL_HOST_HOME: Container mount point (e.g., /home/host)
+    """
+    # Only translate in Docker environment
+    if os.environ.get("HFTOOL_IN_DOCKER") != "1":
+        return path
+
+    real_home = os.environ.get("HFTOOL_REAL_HOME")
+    host_home = os.environ.get("HFTOOL_HOST_HOME", "/home/host")
+
+    if not real_home:
+        return path
+
+    # Resolve symlinks and normalize path
+    try:
+        # Use os.path.realpath to resolve symlinks
+        resolved_path = os.path.realpath(path)
+    except (OSError, ValueError):
+        resolved_path = path
+
+    # Check if path starts with real home directory
+    if resolved_path.startswith(real_home + os.sep) or resolved_path == real_home:
+        # Translate to container path
+        relative = resolved_path[len(real_home):]
+        translated = host_home + relative
+        return translated
+
+    # Path is not in home directory - return original
+    # (may be in /workspace or other mounted location)
+    return path
+
+
 class InputType(Enum):
     """Types of input data."""
     TEXT = auto()
@@ -27,8 +75,11 @@ def detect_input_type(input_str: str) -> InputType:
     Returns:
         Detected InputType
     """
+    # Translate path if in Docker before checking existence
+    check_path = translate_docker_path(input_str)
+
     # Check if it's a file path
-    if os.path.exists(input_str):
+    if os.path.exists(check_path):
         ext = os.path.splitext(input_str)[1].lower()
         
         # Image extensions
@@ -151,15 +202,24 @@ def load_image(input_data: str, **kwargs) -> Any:
         except Exception as e:
             raise ValueError(f"Failed to load image from URL: {e}")
     
-    # Local file
-    elif os.path.isfile(input_data):
-        try:
-            image = Image.open(input_data)
-        except Exception as e:
-            raise ValueError(f"Failed to load image from file: {e}")
-    
+    # Local file - translate path if in Docker
     else:
-        raise ValueError(f"Image not found: {input_data}")
+        translated_path = translate_docker_path(input_data)
+
+        if os.path.isfile(translated_path):
+            try:
+                image = Image.open(translated_path)
+            except Exception as e:
+                raise ValueError(f"Failed to load image from file: {e}")
+        else:
+            # Provide helpful error message
+            if os.environ.get("HFTOOL_IN_DOCKER") == "1" and translated_path != input_data:
+                raise ValueError(
+                    f"Image not found: {input_data}\n"
+                    f"Translated to: {translated_path}\n"
+                    f"Ensure the file exists and is accessible in the container."
+                )
+            raise ValueError(f"Image not found: {input_data}")
     
     # Convert mode if specified
     mode = kwargs.get("mode")
@@ -185,12 +245,19 @@ def load_audio(
         Tuple of (audio_array, sample_rate) or just the file path
         depending on what's needed by the downstream task
     """
-    if not os.path.isfile(input_data):
+    # Translate path if in Docker
+    translated_path = translate_docker_path(input_data)
+
+    if not os.path.isfile(translated_path):
+        if os.environ.get("HFTOOL_IN_DOCKER") == "1" and translated_path != input_data:
+            raise ValueError(
+                f"Audio file not found: {input_data}\n"
+                f"Translated to: {translated_path}"
+            )
         raise ValueError(f"Audio file not found: {input_data}")
-    
-    # For most transformers pipelines, just return the path
-    # The pipeline will handle loading
-    return input_data
+
+    # Return translated path for downstream processing
+    return translated_path
 
 
 def load_audio_array(
@@ -239,7 +306,15 @@ def load_video(input_data: str, **kwargs) -> str:
     Returns:
         Video file path (video processing is done by downstream tasks)
     """
-    if not os.path.isfile(input_data):
+    # Translate path if in Docker
+    translated_path = translate_docker_path(input_data)
+
+    if not os.path.isfile(translated_path):
+        if os.environ.get("HFTOOL_IN_DOCKER") == "1" and translated_path != input_data:
+            raise ValueError(
+                f"Video file not found: {input_data}\n"
+                f"Translated to: {translated_path}"
+            )
         raise ValueError(f"Video file not found: {input_data}")
-    
-    return input_data
+
+    return translated_path

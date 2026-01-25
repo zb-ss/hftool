@@ -433,3 +433,119 @@ def get_cuda_visible_devices(gpu_indices: List[int]) -> str:
         Comma-separated string of GPU indices
     """
     return ",".join(str(i) for i in gpu_indices)
+
+
+def get_multi_gpu_kwargs(
+    reserve_per_gpu_gb: float = 6.0,
+    cpu_fallback_gb: float = 64.0,
+    allow_cpu_offload: bool = False,
+) -> dict:
+    """Get kwargs for distributing a model across multiple GPUs.
+
+    This is the centralized function for multi-GPU support. All task handlers
+    should use this to get consistent multi-GPU behavior.
+
+    The function checks HFTOOL_MULTI_GPU environment variable:
+    - "1", "true", "yes", "balanced": Enable multi-GPU distribution
+    - "0", "false", "no": Disable multi-GPU (single GPU or CPU offload)
+    - unset: Auto-enable if multiple GPUs available
+
+    IMPORTANT: By default, CPU is NOT included in the device map to prevent
+    critical components (like text_encoder) from being placed on CPU, which
+    causes device mismatch errors during inference. Set allow_cpu_offload=True
+    only if the model explicitly supports CPU offloading.
+
+    Args:
+        reserve_per_gpu_gb: Memory to reserve per GPU for VAE/intermediate tensors
+        cpu_fallback_gb: CPU memory available for fallback offloading
+        allow_cpu_offload: If True, include CPU in device map for memory-constrained
+            situations. WARNING: This can cause device mismatch errors with some models.
+
+    Returns:
+        Dict with keys:
+        - "use_multi_gpu": bool - Whether multi-GPU is enabled
+        - "num_gpus": int - Number of available GPUs
+        - "device_map": str or None - Device map for from_pretrained()
+        - "max_memory": dict or None - Memory limits per device
+        - "no_split_module_classes": list - Modules that should not be split across devices
+        - "message": str - Status message to display to user
+
+    Example:
+        >>> from hftool.core.device import get_multi_gpu_kwargs
+        >>> kwargs = get_multi_gpu_kwargs()
+        >>> if kwargs["use_multi_gpu"]:
+        ...     pipe = Pipeline.from_pretrained(
+        ...         model,
+        ...         device_map=kwargs["device_map"],
+        ...         max_memory=kwargs["max_memory"],
+        ...     )
+    """
+    result = {
+        "use_multi_gpu": False,
+        "num_gpus": 0,
+        "device_map": None,
+        "max_memory": None,
+        "no_split_module_classes": None,
+        "message": "",
+    }
+
+    if not _TORCH_AVAILABLE or not torch.cuda.is_available():
+        result["message"] = "No GPU available"
+        return result
+
+    num_gpus = torch.cuda.device_count()
+    result["num_gpus"] = num_gpus
+
+    if num_gpus <= 1:
+        result["message"] = "Single GPU mode"
+        return result
+
+    # Check environment variable
+    # IMPORTANT: Multi-GPU is OFF by default. Only enable when explicitly requested
+    # via HFTOOL_MULTI_GPU=1 or --gpu all (which sets the env var)
+    multi_gpu_env = os.environ.get("HFTOOL_MULTI_GPU", "").lower()
+
+    # Explicit enable (set by CLI when user selects --gpu all)
+    if multi_gpu_env in ("1", "true", "yes", "balanced"):
+        use_multi_gpu = True
+    # Explicit disable OR not set (default is OFF)
+    else:
+        # Multi-GPU requires explicit opt-in to avoid device mismatch issues
+        result["message"] = f"Single GPU mode ({num_gpus} GPUs available). Use --gpu all for multi-GPU."
+        return result
+
+    if not use_multi_gpu:
+        return result
+
+    # Calculate memory allocation - GPU only by default
+    # Set max_memory to 0 for CPU to completely prevent CPU placement
+    max_memory = {}
+    gpu_allocs = []
+
+    for i in range(num_gpus):
+        try:
+            mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+            usable_gb = int(mem_gb - reserve_per_gpu_gb)
+            if usable_gb > 0:
+                max_memory[i] = f"{usable_gb}GB"
+                gpu_allocs.append(f"GPU {i}: {usable_gb}GB")
+        except Exception:
+            pass
+
+    # Only add CPU fallback if explicitly allowed
+    # WARNING: Including CPU can cause device mismatch errors when text_encoder
+    # or other critical components get placed on CPU
+    if allow_cpu_offload:
+        max_memory["cpu"] = f"{int(cpu_fallback_gb)}GB"
+        cpu_msg = f", CPU fallback: {int(cpu_fallback_gb)}GB"
+    else:
+        # Explicitly set CPU to 0 to prevent any CPU placement
+        max_memory["cpu"] = "0GB"
+        cpu_msg = ""
+
+    result["use_multi_gpu"] = True
+    result["device_map"] = "balanced"
+    result["max_memory"] = max_memory
+    result["message"] = f"Multi-GPU mode: Distributing across {num_gpus} GPUs ({', '.join(gpu_allocs)}{cpu_msg})"
+
+    return result

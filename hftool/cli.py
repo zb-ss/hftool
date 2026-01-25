@@ -1890,6 +1890,9 @@ def _run_task_command(
                 os.environ["CUDA_VISIBLE_DEVICES"] = visible_devices
             # Pass GPU info to extra_kwargs for tasks that need it
             extra_kwargs["_gpu_indices"] = gpu_indices
+            # Signal multi-GPU mode to pipeline loaders when multiple GPUs selected
+            if len(gpu_indices) > 1:
+                os.environ["HFTOOL_MULTI_GPU"] = "1"
 
     # Quiet and JSON modes suppress verbose output
     if verbose and not quiet and not output_json:
@@ -2191,6 +2194,9 @@ def _run_task_command(
         _check_task_deps(task_config, verbose)
         
         # Run the task (quiet mode suppresses progress bars)
+        # Get model metadata for load kwargs (e.g., subfolder for LTX-2)
+        model_metadata = model_info.metadata if model_info else {}
+
         result = _run_task(
             task_name=resolved_task,
             task_config=task_config,
@@ -2200,6 +2206,7 @@ def _run_task_command(
             device=device,
             dtype=dtype,
             verbose=verbose and not quiet and not output_json,
+            model_metadata=model_metadata,
             # Filter out internal keys (starting with _) before passing to pipeline
             **{k: v for k, v in extra_kwargs.items() if not k.startswith("_")}
         )
@@ -2562,6 +2569,7 @@ def _run_task(
     device: str,
     dtype: Optional[str],
     verbose: bool,
+    model_metadata: Optional[Dict[str, Any]] = None,
     **kwargs
 ):
     """Run the specified task."""
@@ -2628,15 +2636,30 @@ def _run_task(
     
     if verbose:
         click.echo(f"Loading model: {model}")
-    
+
+    # Separate load-time parameters from inference-time parameters in model metadata
+    # Load-time: subfolder, revision, variant, etc.
+    # Inference-time: num_inference_steps, guidance_scale, height, width, num_frames, etc.
+    load_param_names = {"subfolder", "revision", "variant", "torch_dtype", "use_safetensors"}
+    load_kwargs = {}
+    infer_kwargs = {}
+    if model_metadata:
+        for key, value in model_metadata.items():
+            if key in load_param_names:
+                load_kwargs[key] = value
+            else:
+                infer_kwargs[key] = value
+
     # Execute task
     result = task_handler.execute(
         model=model,
         input_data=input_data,
         output_path=output_file,
+        load_kwargs=load_kwargs,
+        infer_kwargs=infer_kwargs,
         **kwargs
     )
-    
+
     return result
 
 
@@ -2832,7 +2855,8 @@ def _show_native_install_instructions(hw):
 @docker_command.command("build")
 @click.option("--platform", "-p", type=click.Choice(["rocm", "cuda", "cpu"]), help="Platform to build")
 @click.option("--force", "-f", is_flag=True, help="Force rebuild even if image exists")
-def docker_build(platform: Optional[str], force: bool):
+@click.option("--no-cache", is_flag=True, help="Disable Docker cache (rebuilds from scratch)")
+def docker_build(platform: Optional[str], force: bool, no_cache: bool):
     """Build the hftool Docker image for your platform."""
     from hftool.utils.docker import detect_hardware, build_image, check_image_available, GPUPlatform
 
@@ -2857,9 +2881,11 @@ def docker_build(platform: Optional[str], force: bool):
             return
 
     console.print(f"Building {image_name}...")
+    if no_cache:
+        console.print("[yellow]Building without cache (this will take longer)[/yellow]")
     console.print("This may take 10-15 minutes.\n")
 
-    if build_image(target_platform):
+    if build_image(target_platform, no_cache=no_cache):
         console.print(f"\n[green]Successfully built {image_name}[/green]")
     else:
         console.print(f"\n[red]Failed to build {image_name}[/red]")

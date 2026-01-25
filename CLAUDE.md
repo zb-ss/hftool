@@ -114,6 +114,21 @@ Models are defined in `hftool/core/models.py` using `ModelInfo` dataclass:
 
 `hftool/core/device.py` auto-detects: ROCm → CUDA → MPS → CPU. ROCm-first with `HFTOOL_ROCM_PATH` support for using Ollama's bundled ROCm.
 
+### Multi-GPU Architecture
+
+Multi-GPU support is centralized in `hftool/core/device.py` via `get_multi_gpu_kwargs()`:
+
+```python
+from hftool.core.device import get_multi_gpu_kwargs
+
+gpu_config = get_multi_gpu_kwargs(reserve_per_gpu_gb=6.0)
+if gpu_config["use_multi_gpu"]:
+    load_kwargs["device_map"] = gpu_config["device_map"]  # "balanced"
+    load_kwargs["max_memory"] = gpu_config["max_memory"]  # per-GPU limits + CPU fallback
+```
+
+This ensures consistent multi-GPU behavior across all task handlers (text_to_image.py, text_to_video.py, image_to_image.py). When users select `--gpu all`, the CLI sets `HFTOOL_MULTI_GPU=1` which triggers model distribution via `device_map="balanced"`.
+
 ### Dependency System
 
 Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`, `with_stt`, `with_interactive`. Use `check_dependency()` from `hftool/utils/deps.py` with try/except for graceful degradation.
@@ -125,6 +140,7 @@ Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`,
 | `cli.py` | Main CLI entry point with all subcommands |
 | `core/models.py` | Model registry (MODEL_REGISTRY dict) |
 | `core/registry.py` | Task registry (TASK_REGISTRY dict) |
+| `core/device.py` | Device detection, multi-GPU via `get_multi_gpu_kwargs()` |
 | `tasks/base.py` | Abstract BaseTask class and mixins |
 | `io/interactive_mode.py` | Full interactive wizard (-I flag) |
 | `utils/errors.py` | Error handling with pattern matching |
@@ -217,6 +233,8 @@ raise HFToolError("Message", suggestion="How to fix it")
 | `HFTOOL_AUTO_DOWNLOAD` | Skip download prompts (1=enabled) |
 | `HFTOOL_DEBUG` | Show all warnings (1=enabled) |
 | `HFTOOL_LOG_FILE` | Log to file |
+| `HFTOOL_MULTI_GPU` | Multi-GPU mode: `1`/`balanced` enables, `0` disables |
+| `HFTOOL_CPU_OFFLOAD` | CPU offload level: `0` disabled, `1` model, `2` sequential |
 | `HFTOOL_ROCM_PATH` | AMD ROCm library path |
 | `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture |
 | `HF_TOKEN` | HuggingFace token for gated models |
@@ -225,7 +243,8 @@ raise HFToolError("Message", suggestion="How to fix it")
 
 - **text-to-image** (t2i): Z-Image, SDXL, FLUX
 - **image-to-image** (i2i): Qwen Image Edit, FLUX.2 Klein (non-commercial), SDXL
-- **text-to-video** (t2v): HunyuanVideo, CogVideoX, Wan2.2
+- **text-to-video** (t2v): LTX-2, HunyuanVideo, CogVideoX, Wan2.2
+- **image-to-video** (i2v): LTX-2 I2V, HunyuanVideo I2V
 - **text-to-speech** (tts): Bark, MMS-TTS
 - **automatic-speech-recognition** (asr/stt): Whisper
 - Various transformers pipeline tasks (text-generation, summarization, etc.)

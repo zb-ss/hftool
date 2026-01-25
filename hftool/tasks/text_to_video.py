@@ -47,15 +47,8 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             "num_frames": 97,  # ~4 seconds at 24fps
             "num_inference_steps": 50,
             "guidance_scale": 3.0,
-            "height": 480,
-            "width": 848,  # 16:9 aspect ratio
-        },
-        "ltx-2-19b-distilled": {
-            "num_frames": 97,
-            "num_inference_steps": 8,  # Distilled model uses fewer steps
-            "guidance_scale": 1.0,
-            "height": 480,
-            "width": 848,
+            "height": 512,
+            "width": 768,  # Must be divisible by 32
         },
     }
     
@@ -109,17 +102,20 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         from hftool.utils.deps import check_dependencies, check_ffmpeg
         check_dependencies(["diffusers", "torch", "accelerate"], extra="with_video")
         check_ffmpeg()
-        
+
         import torch
-        from hftool.core.device import detect_device, get_optimal_dtype, get_device_info, configure_rocm_env
-        
+        from hftool.core.device import (
+            detect_device, get_optimal_dtype, get_device_info,
+            configure_rocm_env, get_multi_gpu_kwargs
+        )
+
         # Configure ROCm optimizations early (before any GPU operations)
         configure_rocm_env()
-        
+
         # Get device info
         device_info = get_device_info()
         device = self.device if self.device != "auto" else detect_device()
-        
+
         if self.dtype:
             dtype_map = {
                 "bfloat16": torch.bfloat16,
@@ -129,48 +125,26 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             dtype = dtype_map.get(self.dtype, torch.bfloat16)
         else:
             dtype = get_optimal_dtype(device)
-        
+
         self._model_name = model
         model_lower = model.lower()
-        
-        # Determine loading strategy
-        num_gpus = device_info.device_count if device == "cuda" else 0
-        
-        # Check multi-GPU settings
-        # NOTE: For video models, device_map="balanced" often causes OOM during VAE decode
-        # because the VAE needs to process many frames at once. CPU offload is more reliable.
-        # Use HFTOOL_MULTI_GPU=balanced to force device_map distribution anyway.
-        multi_gpu_env = os.environ.get("HFTOOL_MULTI_GPU", "").lower()
-        force_device_map = multi_gpu_env == "balanced"  # Only if explicitly requested
-        disable_multi_gpu = multi_gpu_env in ("0", "false", "no")
-        
-        # Check CPU offload settings
+
+        # Prepare load kwargs
+        load_kwargs = {"torch_dtype": dtype, **kwargs}
+
+        # Get multi-GPU configuration (centralized logic)
+        gpu_config = get_multi_gpu_kwargs(reserve_per_gpu_gb=6.0)
+        if gpu_config["message"]:
+            click.echo(gpu_config["message"])
+
+        if gpu_config["use_multi_gpu"]:
+            load_kwargs["device_map"] = gpu_config["device_map"]
+            load_kwargs["max_memory"] = gpu_config["max_memory"]
+
+        # Check CPU offload settings (used when multi-GPU not active)
         cpu_offload_env = os.environ.get("HFTOOL_CPU_OFFLOAD", "").lower()
         disable_cpu_offload = cpu_offload_env in ("0", "false", "no")
         use_sequential_offload = cpu_offload_env == "2"
-        
-        # Prepare load kwargs
-        load_kwargs = {"torch_dtype": dtype, **kwargs}
-        
-        # For video models, prefer CPU offload over device_map due to VAE memory requirements
-        # device_map="balanced" can be forced with HFTOOL_MULTI_GPU=balanced
-        if force_device_map and num_gpus > 1:
-            click.echo(f"Multi-GPU mode (forced): Distributing model across {num_gpus} GPUs...")
-            click.echo("Warning: Video VAE decode may OOM. Consider using CPU offload instead.")
-            load_kwargs["device_map"] = "balanced"
-            max_memory = {}
-            for i in range(num_gpus):
-                try:
-                    mem_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
-                    # Reserve more memory for VAE decode (~8GB)
-                    max_memory[i] = f"{int(mem_gb - 8)}GB"
-                except Exception:
-                    pass
-            if max_memory:
-                load_kwargs["max_memory"] = max_memory
-                click.echo(f"GPU memory allocation: {max_memory}")
-        elif num_gpus > 1:
-            click.echo(f"Multi-GPU detected ({num_gpus} GPUs), using CPU offload for video (more reliable)")
         
         # Load model-specific pipelines
         if "hunyuanvideo" in model_lower:
@@ -202,9 +176,22 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         
         # Check if pipeline has been placed on devices via device_map
         has_device_map = hasattr(pipe, "hf_device_map") and pipe.hf_device_map
-        
+
         if has_device_map:
-            click.echo(f"Model distributed across devices: {pipe.hf_device_map}")
+            # Check if any component ended up on CPU - this breaks inference
+            cpu_components = [k for k, v in pipe.hf_device_map.items() if v == "cpu"]
+            if cpu_components:
+                click.echo(f"Warning: Components on CPU will cause errors: {cpu_components}", err=True)
+                click.echo("Falling back to sequential CPU offload...", err=True)
+                # Reset the device map and use sequential offload instead
+                pipe = pipe.to("cpu")  # Reset to CPU first
+                if hasattr(pipe, "enable_sequential_cpu_offload"):
+                    pipe.enable_sequential_cpu_offload()
+                else:
+                    click.echo("Using model CPU offload as fallback...")
+                    pipe.enable_model_cpu_offload()
+            else:
+                click.echo(f"Model distributed across devices: {pipe.hf_device_map}")
         elif disable_cpu_offload:
             # User explicitly disabled CPU offload
             click.echo(f"Loading model fully on {device}...")
@@ -220,9 +207,13 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             else:
                 pipe.to(device)
         else:
-            # Default: model CPU offload - best balance for video generation
-            if hasattr(pipe, "enable_model_cpu_offload"):
-                click.echo("Enabling model CPU offload (recommended for video)...")
+            # Default for video: use sequential offload for large models, model offload otherwise
+            # Sequential is slower but handles models larger than VRAM
+            if hasattr(pipe, "enable_sequential_cpu_offload"):
+                click.echo("Enabling sequential CPU offload (required for large video models)...")
+                pipe.enable_sequential_cpu_offload()
+            elif hasattr(pipe, "enable_model_cpu_offload"):
+                click.echo("Enabling model CPU offload...")
                 pipe.enable_model_cpu_offload()
             else:
                 pipe.to(device)
@@ -320,8 +311,10 @@ class TextToVideoTask(TextInputMixin, BaseTask):
     def _load_ltx2(self, model: str, dtype, **kwargs) -> Any:
         """Load LTX-2 pipeline.
 
-        LTX-2 is a 19B parameter audio-video foundation model from Lightricks.
+        LTX-2 is a video generation model from Lightricks.
         Requires diffusers main branch (0.37.0+) with LTX2Pipeline support.
+
+        See: https://huggingface.co/Lightricks/LTX-2
         """
         import click
         from hftool.utils.errors import HFToolError
@@ -329,17 +322,33 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         if "torch_dtype" not in kwargs:
             kwargs["torch_dtype"] = dtype
 
-        # Get subfolder from metadata if available (for specific checkpoints)
-        subfolder = kwargs.pop("subfolder", None)
-
         try:
-            from diffusers import LTX2Pipeline
+            if self.mode == "i2v" or "i2v" in model.lower():
+                from diffusers import LTX2ImageToVideoPipeline as LTXPipeline
+                pipeline_name = "LTX2ImageToVideoPipeline"
+            else:
+                from diffusers import LTX2Pipeline as LTXPipeline
+                pipeline_name = "LTX2Pipeline"
         except (ImportError, AttributeError):
             # LTX2Pipeline is only available in diffusers 0.37.0+ (currently unreleased)
+            import os
+            in_docker = os.environ.get("HFTOOL_IN_DOCKER") == "1"
+
+            if in_docker:
+                # Can't pip install in Docker with --user flag (permission denied)
+                raise HFToolError(
+                    "LTX-2 requires diffusers main branch (0.37.0+) which is not in the Docker image.",
+                    suggestion=(
+                        "Rebuild the Docker image with updated diffusers:\n"
+                        "  hftool docker build --no-cache\n\n"
+                        "Or run natively (outside Docker) to auto-install dependencies."
+                    )
+                )
+
+            # Native mode: try to auto-install
             click.echo(
                 "LTX2Pipeline not available. Installing diffusers from main branch..."
             )
-            # Auto-install diffusers from main branch
             from hftool.core.download import install_pip_dependencies
             success = install_pip_dependencies(
                 ["git+https://github.com/huggingface/diffusers"],
@@ -352,13 +361,8 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                 suggestion="Please restart hftool to use the updated diffusers library."
             )
 
-        click.echo("Loading LTX-2 pipeline...")
-        if subfolder:
-            click.echo(f"Using checkpoint: {subfolder}")
-            pipe = LTX2Pipeline.from_pretrained(model, subfolder=subfolder, **kwargs)
-        else:
-            pipe = LTX2Pipeline.from_pretrained(model, **kwargs)
-
+        click.echo(f"Loading {pipeline_name}...")
+        pipe = LTXPipeline.from_pretrained(model, **kwargs)
         return pipe
     
     def get_default_kwargs(self) -> Dict[str, Any]:
@@ -464,15 +468,28 @@ class ImageToVideoTask(TextToVideoTask):
     
     def validate_input(self, input_data: Any) -> Any:
         """Validate image input for I2V.
-        
+
         Args:
-            input_data: Tuple of (image_path, prompt) or dict with 'image' and 'prompt'
-        
+            input_data: Tuple of (image_path, prompt), dict with 'image' and 'prompt',
+                       or JSON string containing the dict
+
         Returns:
             Dict with 'image' and 'prompt' keys
         """
+        import json
         from hftool.io.input_loader import load_image
-        
+
+        # Handle JSON string input (from interactive mode)
+        if isinstance(input_data, str):
+            try:
+                input_data = json.loads(input_data)
+            except json.JSONDecodeError:
+                raise ValueError(
+                    "I2V input must be a dict with 'image' and 'prompt' keys, "
+                    "a tuple of (image_path, prompt), or a JSON string. "
+                    f"Got string: {input_data[:50]}..."
+                )
+
         if isinstance(input_data, dict):
             image = input_data.get("image")
             prompt = input_data.get("prompt", "")

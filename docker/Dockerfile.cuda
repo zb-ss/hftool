@@ -62,7 +62,6 @@ RUN pip install --no-cache-dir \
     "huggingface_hub>=0.20.0" \
     "rich>=13.0.0" \
     "python-dotenv>=1.0.0" \
-    "diffusers>=0.36.0" \
     "Pillow>=9.0.0" \
     "accelerate>=0.26.0" \
     "protobuf>=3.20.0" \
@@ -70,6 +69,10 @@ RUN pip install --no-cache-dir \
     "soundfile>=0.12.0" \
     "ftfy>=6.0.0" \
     "InquirerPy>=0.3.0"
+
+# Install diffusers from main branch for LTX-2 support (requires 0.37.0+)
+# Once diffusers 0.37.0 is released, replace with: "diffusers>=0.37.0"
+RUN pip install --no-cache-dir git+https://github.com/huggingface/diffusers
 
 # Install hftool manually (bypass pyproject.toml entirely)
 RUN SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])") && \

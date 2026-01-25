@@ -379,6 +379,10 @@ def get_docker_run_command(
     # Environment variables
     cmd.extend(["-e", "HFTOOL_AUTO_DOWNLOAD=1"])
 
+    # Pass multi-GPU flag if multiple GPUs selected
+    if gpu_indices and len(gpu_indices) > 1:
+        cmd.extend(["-e", "HFTOOL_MULTI_GPU=1"])
+
     if hf_token or os.environ.get("HF_TOKEN"):
         token = hf_token or os.environ.get("HF_TOKEN")
         cmd.extend(["-e", f"HF_TOKEN={token}"])
@@ -446,6 +450,7 @@ def build_image(
     platform: GPUPlatform,
     project_root: Optional[str] = None,
     quiet: bool = False,
+    no_cache: bool = False,
 ) -> bool:
     """Build the hftool Docker image for a platform.
 
@@ -453,6 +458,7 @@ def build_image(
         platform: Target platform (rocm, cuda, cpu)
         project_root: Path to hftool project (for Dockerfile)
         quiet: Suppress output
+        no_cache: Disable Docker cache (rebuilds from scratch)
 
     Returns:
         True if successful
@@ -480,8 +486,10 @@ def build_image(
         "-f", dockerfile,
         "-t", image_name,
         "--build-arg", f"HFTOOL_VERSION={version}",
-        ".",
     ]
+    if no_cache:
+        cmd.append("--no-cache")
+    cmd.append(".")
 
     try:
         kwargs = {"cwd": project_root}
