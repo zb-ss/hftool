@@ -2970,18 +2970,23 @@ def docker_run(ctx: click.Context, gpu: Optional[str], hftool_args: tuple):
     """Run hftool command inside Docker container.
 
     Pass hftool arguments after the run command (use -- to separate if needed).
+    Uses device passthrough to pass only selected GPU(s) to the container.
 
     \b
     Examples:
       hftool docker run -t t2i -i "A cat" -o cat.png
       hftool docker run --gpu 1 -- -t t2v -i "A cat" -o cat.mp4
-      hftool docker run -- -t t2i -i "A cat" -o cat.png
+      hftool docker run --gpu auto -- -t t2i -i "A cat" -o cat.png
       hftool docker run --help
     """
     import os
+    import sys
     import subprocess
     import platform
-    from hftool.utils.docker import detect_hardware, run_in_docker
+    from hftool.utils.docker import (
+        detect_hardware, run_in_docker, GPUPlatform,
+        parse_gpu_arg, interactive_gpu_select, list_amd_gpus
+    )
 
     hw = detect_hardware()
 
@@ -2992,8 +2997,19 @@ def docker_run(ctx: click.Context, gpu: Optional[str], hftool_args: tuple):
     # Parse GPU selection
     gpu_indices = None
     if gpu:
-        from hftool.core.device import parse_gpu_selection
-        gpu_indices = parse_gpu_selection(gpu)
+        # Explicit GPU specified via --gpu
+        gpu_indices = parse_gpu_arg(gpu, hw.platform)
+    elif hw.platform == GPUPlatform.ROCM and sys.stdin.isatty():
+        # Interactive mode: offer GPU selection if multiple AMD GPUs
+        gpus = list_amd_gpus()
+        if len(gpus) > 1:
+            gpu_indices = interactive_gpu_select(hw.platform)
+            if gpu_indices is None:
+                # User cancelled
+                raise SystemExit(0)
+        elif len(gpus) == 1:
+            # Single GPU - use it
+            gpu_indices = [gpus[0].index]
 
     # Combine explicit args and context args
     args = list(hftool_args) + list(ctx.args)
