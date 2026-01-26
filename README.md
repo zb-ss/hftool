@@ -216,12 +216,40 @@ hftool docker status
 hftool docker build
 
 # Run commands in Docker
-hftool docker run -t t2i -i "A cat" -o cat.png
+hftool docker run -- -t t2i -i "A cat" -o cat.png
+
+# GPU selection (AMD ROCm - uses device passthrough for reliable isolation)
+hftool docker run --gpu 1 -- -t t2v -i "A cat" -o cat.mp4      # Use specific GPU
+hftool docker run --gpu auto -- -t t2i -i "A cat" -o cat.png   # Auto-select non-display GPU
+hftool docker run --gpu 0,1 -- -t t2v -m ltx2 -i "A cat" -o cat.mp4  # Multi-GPU
 
 # Output files auto-open on host after generation completes
 # Use --no-open to disable
-hftool docker run -t t2i -i "A cat" -o cat.png --no-open
+hftool docker run -- -t t2i -i "A cat" -o cat.png --no-open
 ```
+
+**Docker GPU Selection (AMD ROCm):**
+
+For multi-GPU AMD systems, hftool uses device passthrough to pass only selected GPU(s) to the container. This is more reliable than environment variable isolation:
+
+```bash
+# Interactive GPU selection (shown when multiple GPUs detected)
+hftool docker run -- -t t2i -i "A cat" -o cat.png
+#   Available GPUs:
+#     [0] AMD Radeon RX 7900 XTX, 24.0GB (display)
+#     [1] AMD Radeon RX 7900 XTX, 24.0GB
+#   GPU> 1
+
+# Explicit selection
+hftool docker run --gpu 1 -- -t t2v -i "A cat" -o cat.mp4
+```
+
+| Option | Description |
+|--------|-------------|
+| `--gpu auto` | Select best non-display GPU |
+| `--gpu 0` | Use specific GPU by index |
+| `--gpu 0,1` | Use multiple GPUs (multi-GPU mode) |
+| (no option) | Interactive selection if multiple GPUs |
 
 **Environment variables passed to Docker:**
 
