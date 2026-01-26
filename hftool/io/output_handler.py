@@ -283,7 +283,7 @@ def save_video(
         RuntimeError: If ffmpeg is not available
     """
     import shutil
-    import click
+    from hftool.utils.progress import console
 
     if shutil.which("ffmpeg") is None:
         raise RuntimeError(
@@ -314,7 +314,7 @@ def save_video(
     if not frames or (hasattr(frames, '__len__') and len(frames) == 0):
         raise ValueError("No frames to save - video generation may have failed")
 
-    click.echo(f"Encoding {len(frames)} frames to video...")
+    console.info(f"Encoding {len(frames)} frames to video...")
 
     # Get encoding settings
     crf = kwargs.get("crf", 23)  # Quality (lower = better, 18-28 is reasonable)

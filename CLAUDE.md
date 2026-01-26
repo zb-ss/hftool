@@ -190,16 +190,29 @@ Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`,
 | `docker/Dockerfile.cuda` | `ARG HFTOOL_VERSION=X.Y.Z` |
 | `docker/Dockerfile.cpu` | `ARG HFTOOL_VERSION=X.Y.Z` |
 
-Follow [Semantic Versioning](https://semver.org/):
-- **MAJOR** (X.0.0): Breaking changes to CLI interface or API
-- **MINOR** (0.X.0): New features (new models, new tasks, new CLI options)
-- **PATCH** (0.0.X): Bug fixes, documentation updates, internal refactors
+### Pre-1.0 Versioning (Current)
 
-Examples:
-- Adding a new model → bump MINOR (0.4.1 → 0.5.0)
-- Adding a new task → bump MINOR
-- Fixing a bug → bump PATCH (0.4.1 → 0.4.2)
-- Breaking CLI change → bump MAJOR
+While the project is at `0.x.y`, we use conservative versioning to avoid rushing toward 1.0:
+
+| Change Type | Bump | Examples |
+|-------------|------|----------|
+| Breaking CLI/API changes | MINOR (0.X.0) | Removing a flag, changing output format |
+| New task types | MINOR | Adding image-to-3d, video-to-video |
+| New models | PATCH (0.0.X) | Adding another SDXL variant, new TTS voice |
+| New CLI options | PATCH | Adding --quiet, --json flags |
+| Bug fixes | PATCH | Docker path issues, warning suppression |
+| UX improvements | PATCH | Better progress bars, cleaner output |
+| Documentation | PATCH | README updates, docstrings |
+| Internal refactors | PATCH | Code cleanup without behavior changes |
+
+**1.0 criteria:** Stable API, comprehensive test coverage, complete documentation, battle-tested in real-world use.
+
+### Post-1.0 Versioning (Future)
+
+Once stable at 1.0+, follow standard [Semantic Versioning](https://semver.org/):
+- **MAJOR** (X.0.0): Breaking changes to CLI interface or API
+- **MINOR** (0.X.0): New features (backward-compatible)
+- **PATCH** (0.0.X): Bug fixes
 
 **Bump version in the same commit as the feature/fix, not separately.**
 

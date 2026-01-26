@@ -248,6 +248,84 @@ def detect_hardware() -> HardwareInfo:
     )
 
 
+def translate_output_path_for_docker(
+    output_path: str,
+    user_home: str,
+) -> Tuple[str, Optional[str], str]:
+    """Translate a host output path to a container path, with mount info.
+
+    Handles:
+    - ~/path -> /output/path (mounts ~/path's parent)
+    - /absolute/path -> /output/filename (mounts parent directory)
+    - relative/path -> /workspace/relative/path (uses existing mount)
+
+    Args:
+        output_path: Path specified by user (may contain ~)
+        user_home: User's home directory on host
+
+    Returns:
+        Tuple of (container_path, volume_mount_string_or_None, host_path)
+    """
+    # Expand ~ to actual home path
+    expanded_path = os.path.expanduser(output_path)
+
+    # Get parent directory and filename
+    parent_dir = os.path.dirname(os.path.abspath(expanded_path))
+    filename = os.path.basename(expanded_path)
+
+    # Check if path is under home directory
+    if expanded_path.startswith(user_home):
+        # Path is under home - mount output directory as read-write
+        # Container path: /output/<filename>
+        container_path = f"/output/{filename}"
+        volume_mount = f"{parent_dir}:/output"
+        return container_path, volume_mount, expanded_path
+
+    # Check if path is absolute (outside home and cwd)
+    if os.path.isabs(expanded_path):
+        # Absolute path - mount parent directory
+        container_path = f"/output/{filename}"
+        volume_mount = f"{parent_dir}:/output"
+        return container_path, volume_mount, expanded_path
+
+    # Relative path - will be relative to /workspace in container
+    container_path = f"/workspace/{output_path}"
+    return container_path, None, os.path.join(os.getcwd(), output_path)
+
+
+def process_docker_args(
+    args: List[str],
+    user_home: str,
+) -> Tuple[List[str], Optional[str], Optional[str]]:
+    """Process hftool args to handle output paths for Docker.
+
+    Finds -o/--output-file arguments, translates paths for container,
+    and returns mount information.
+
+    Args:
+        args: Original hftool arguments
+        user_home: User's home directory on host
+
+    Returns:
+        Tuple of (modified_args, volume_mount_or_None, host_output_path_or_None)
+    """
+    new_args = list(args)
+    volume_mount = None
+    host_output_path = None
+
+    for i, arg in enumerate(new_args):
+        if arg in ("-o", "--output-file") and i + 1 < len(new_args):
+            output_path = new_args[i + 1]
+            container_path, volume_mount, host_output_path = translate_output_path_for_docker(
+                output_path, user_home
+            )
+            # Update the arg with container path
+            new_args[i + 1] = container_path
+            break
+
+    return new_args, volume_mount, host_output_path
+
+
 def get_docker_run_command(
     hardware: HardwareInfo,
     hftool_args: List[str],
@@ -256,6 +334,7 @@ def get_docker_run_command(
     extra_volumes: Optional[List[str]] = None,
     gpu_indices: Optional[List[int]] = None,
     mount_home: bool = True,
+    output_volume: Optional[str] = None,
 ) -> List[str]:
     """Build the docker run command for the detected hardware.
 
@@ -267,6 +346,7 @@ def get_docker_run_command(
         extra_volumes: Additional volume mounts
         gpu_indices: Specific GPU indices to use (None = all GPUs)
         mount_home: Mount user's home directory for file browsing (default: True)
+        output_volume: Volume mount for output directory (from process_docker_args)
 
     Returns:
         List of command arguments for subprocess
@@ -329,6 +409,9 @@ def get_docker_run_command(
             visible = ",".join(str(i) for i in gpu_indices)
             cmd.extend(["-e", f"HIP_VISIBLE_DEVICES={visible}"])
             cmd.extend(["-e", f"ROCR_VISIBLE_DEVICES={visible}"])
+        # Suppress MIOpen workspace warnings (harmless but noisy)
+        # Level 4 = errors only (0=all, 1=info, 2=warnings, 4=errors, 5=fatal)
+        cmd.extend(["-e", "MIOPEN_LOG_LEVEL=4"])
 
     elif hardware.platform == GPUPlatform.CUDA:
         # For NVIDIA, use --gpus flag with device selection
@@ -355,6 +438,10 @@ def get_docker_run_command(
         cmd.extend(["-v", f"{user_home}:/home/host:ro"])  # Read-only for safety
         cmd.extend(["-e", f"HFTOOL_HOST_HOME=/home/host"])
         cmd.extend(["-e", f"HFTOOL_REAL_HOME={user_home}"])
+
+    # Mount output directory if specified (for paths outside workspace)
+    if output_volume:
+        cmd.extend(["-v", output_volume])
 
     # Mark that we're running in Docker (for file picker path handling)
     cmd.extend(["-e", "HFTOOL_IN_DOCKER=1"])
@@ -507,7 +594,7 @@ def run_in_docker(
     hardware: Optional[HardwareInfo] = None,
     auto_setup: bool = True,
     gpu_indices: Optional[List[int]] = None,
-) -> int:
+) -> Tuple[int, Optional[str]]:
     """Run hftool command in Docker container.
 
     Args:
@@ -517,20 +604,21 @@ def run_in_docker(
         gpu_indices: Specific GPU indices to use (None = all GPUs)
 
     Returns:
-        Exit code from the container
+        Tuple of (exit_code, host_output_path_or_None)
     """
+    user_home = os.path.expanduser("~")
     if hardware is None:
         hardware = detect_hardware()
 
     if not hardware.docker_available:
         print("Error: Docker is not installed or not running.")
         print("Install Docker: https://docs.docker.com/get-docker/")
-        return 1
+        return 1, None
 
     if hardware.platform == GPUPlatform.MPS:
         print("Note: Docker GPU passthrough is not supported on Apple Silicon.")
         print("Running natively is recommended for MPS devices.")
-        return 1
+        return 1, None
 
     # Build or pull image if needed
     if not hardware.image_available and auto_setup:
@@ -540,24 +628,34 @@ def run_in_docker(
         if (project_root / "docker").exists():
             if not build_image(hardware.platform, str(project_root)):
                 print(f"Failed to build {hardware.recommended_image}")
-                return 1
+                return 1, None
         else:
             # Can't build locally, would need to pull from registry
             print(f"Image {hardware.recommended_image} not found.")
             print("Please build the image first:")
             print(f"  cd <hftool-repo> && docker build -f docker/Dockerfile.{hardware.platform.value} -t {hardware.recommended_image} .")
-            return 1
+            return 1, None
 
-    cmd = get_docker_run_command(hardware, hftool_args, gpu_indices=gpu_indices)
+    # Process output paths - translate ~/path to container paths and get mount info
+    processed_args, output_volume, host_output_path = process_docker_args(
+        hftool_args, user_home
+    )
+
+    cmd = get_docker_run_command(
+        hardware,
+        processed_args,
+        gpu_indices=gpu_indices,
+        output_volume=output_volume,
+    )
 
     try:
         result = subprocess.run(cmd)
-        return result.returncode
+        return result.returncode, host_output_path
     except KeyboardInterrupt:
-        return 130  # Standard exit code for SIGINT
+        return 130, host_output_path  # Standard exit code for SIGINT
     except Exception as e:
         print(f"Error running Docker: {e}")
-        return 1
+        return 1, None
 
 
 # Configuration file for Docker mode preference

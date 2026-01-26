@@ -562,7 +562,7 @@ def main(
     ctx.obj["batch_json"] = batch_json
     ctx.obj["batch_output_dir"] = batch_output_dir
     ctx.obj["extra_args"] = tuple(_EXTRA_ARGS_CACHE)
-    
+
     # Handle --list-tasks
     if list_tasks:
         _list_tasks()
@@ -706,10 +706,6 @@ def run_command(
     open: Optional[bool],
 ):
     """Run a task with the specified model."""
-    # Ensure PyTorch is ready
-    if not _ensure_pytorch_ready():
-        sys.exit(1)
-
     verbose = ctx.obj.get("verbose", False)
     # Use command-level --open if specified, otherwise use global
     open_output = open if open is not None else ctx.obj.get("open")
@@ -719,6 +715,10 @@ def run_command(
     final_interactive = interactive or ctx.obj.get("interactive", False)
     # Use command-level --gpu if specified, otherwise use global
     final_gpu = gpu if gpu is not None else ctx.obj.get("gpu")
+
+    # Ensure PyTorch is ready (this may import torch)
+    if not _ensure_pytorch_ready():
+        sys.exit(1)
 
     _run_task_command(ctx, task, model, input_data, output_file, device, dtype, final_seed, final_interactive, verbose, open_output, gpu=final_gpu)
 
@@ -1874,25 +1874,14 @@ def _run_task_command(
     if "generator_seed" not in extra_kwargs and "seed" not in extra_kwargs:
         extra_kwargs["seed"] = seed
 
-    # Configure GPU selection (before any CUDA/ROCm operations)
+    # Parse GPU selection for logging and extra_kwargs
     gpu_indices = []
     if gpu and device in ("auto", "cuda"):
-        from hftool.core.device import parse_gpu_selection, get_cuda_visible_devices, is_rocm, get_all_gpus
+        from hftool.core.device import parse_gpu_selection
         gpu_indices = parse_gpu_selection(gpu)
         if gpu_indices:
-            visible_devices = get_cuda_visible_devices(gpu_indices)
-            # Set environment variables for GPU isolation
-            # Note: These must be set before PyTorch initializes CUDA
-            if is_rocm():
-                os.environ["HIP_VISIBLE_DEVICES"] = visible_devices
-                os.environ["ROCR_VISIBLE_DEVICES"] = visible_devices
-            else:
-                os.environ["CUDA_VISIBLE_DEVICES"] = visible_devices
             # Pass GPU info to extra_kwargs for tasks that need it
             extra_kwargs["_gpu_indices"] = gpu_indices
-            # Signal multi-GPU mode to pipeline loaders when multiple GPUs selected
-            if len(gpu_indices) > 1:
-                os.environ["HFTOOL_MULTI_GPU"] = "1"
 
     # Quiet and JSON modes suppress verbose output
     if verbose and not quiet and not output_json:
@@ -2934,29 +2923,14 @@ def docker_run(ctx: click.Context, gpu: Optional[str], hftool_args: tuple):
     if not args:
         args = ["--help"]
 
-    # Extract output file from args for auto-open after docker exits
-    output_file = None
-    no_open = False
-    for i, arg in enumerate(args):
-        if arg in ("-o", "--output-file") and i + 1 < len(args):
-            output_file = args[i + 1]
-        elif arg == "--no-open":
-            no_open = True
+    # Check for --no-open flag
+    no_open = "--no-open" in args
 
-    exit_code = run_in_docker(list(args), hw, gpu_indices=gpu_indices)
+    # run_in_docker handles path translation and returns the host output path
+    exit_code, host_path = run_in_docker(list(args), hw, gpu_indices=gpu_indices)
 
-    # Fix output file permissions (Docker creates files as root)
-    if exit_code == 0 and output_file:
-        # Map container path to host path
-        # /workspace/* -> current directory
-        if output_file.startswith("/workspace/"):
-            host_path = output_file.replace("/workspace/", "")
-        else:
-            host_path = output_file
-
-        # Make path absolute relative to cwd
-        if not os.path.isabs(host_path):
-            host_path = os.path.join(os.getcwd(), host_path)
+    # Handle output file (auto-open, fix permissions)
+    if exit_code == 0 and host_path:
 
         if os.path.exists(host_path):
             # Fix ownership to current user (Docker creates as root)

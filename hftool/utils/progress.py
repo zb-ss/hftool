@@ -1,10 +1,15 @@
-"""Progress tracking utilities for hftool.
+"""Progress tracking and console output utilities for hftool.
 
 Provides rich progress bars with fallback to simple text output.
+Also provides a console wrapper for clean user output with logging support.
 """
 
+import logging
+import os
+import sys
 import time
 import click
+from contextlib import contextmanager
 from typing import Optional, Callable, Any, List
 
 # Try to import rich for fancy progress bars
@@ -18,10 +23,131 @@ try:
         TimeRemainingColumn,
         TimeElapsedColumn,
     )
-    from rich.console import Console
+    from rich.console import Console as RichConsole
+    from rich.live import Live
+    from rich.spinner import Spinner
+    from rich.status import Status
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
+
+# Get the hftool logger
+_logger = logging.getLogger("hftool")
+
+
+class Console:
+    """Console wrapper that shows minimal output to user, logs details to file.
+
+    Usage:
+        from hftool.utils.progress import console
+
+        console.status("Loading model...")  # Shows spinner to user
+        console.log("Model size: 5GB")      # Logged to file only
+        console.info("Model loaded!")       # Shows to user + logs
+        console.warn("Low memory")          # Shows warning to user + logs
+        console.error("Failed!")            # Shows error to user + logs
+    """
+
+    def __init__(self):
+        self._rich_console: Optional[Any] = None
+        self._current_status: Optional[Any] = None
+        self._quiet = os.environ.get("HFTOOL_QUIET", "").lower() in ("1", "true", "yes")
+
+        if RICH_AVAILABLE and not self._quiet:
+            self._rich_console = RichConsole()
+
+    def info(self, message: str, log_only: bool = False):
+        """Show info message to user and log it.
+
+        Args:
+            message: Message to display
+            log_only: If True, only log to file, don't print
+        """
+        _logger.info(message)
+        if not log_only and not self._quiet:
+            if self._rich_console:
+                self._rich_console.print(f"[blue]ℹ[/blue] {message}")
+            else:
+                click.echo(message)
+
+    def log(self, message: str):
+        """Log message to file only (not shown to user).
+
+        Use for verbose/debug info that clutters the terminal.
+        """
+        _logger.info(message)
+
+    def debug(self, message: str):
+        """Debug-level log (file only)."""
+        _logger.debug(message)
+
+    def warn(self, message: str):
+        """Show warning to user and log it."""
+        _logger.warning(message)
+        if not self._quiet:
+            if self._rich_console:
+                self._rich_console.print(f"[yellow]⚠[/yellow] {message}")
+            else:
+                click.echo(f"Warning: {message}", err=True)
+
+    def error(self, message: str):
+        """Show error to user and log it."""
+        _logger.error(message)
+        if self._rich_console:
+            self._rich_console.print(f"[red]✗[/red] {message}")
+        else:
+            click.echo(f"Error: {message}", err=True)
+
+    def success(self, message: str):
+        """Show success message to user."""
+        _logger.info(message)
+        if not self._quiet:
+            if self._rich_console:
+                self._rich_console.print(f"[green]✓[/green] {message}")
+            else:
+                click.echo(f"✓ {message}")
+
+    @contextmanager
+    def status(self, message: str):
+        """Show a spinner/status while a long operation runs.
+
+        Usage:
+            with console.status("Loading model..."):
+                pipeline = load_model()
+            console.success("Model loaded!")
+        """
+        _logger.info(f"Starting: {message}")
+
+        if self._quiet:
+            yield
+            return
+
+        if RICH_AVAILABLE and self._rich_console:
+            with self._rich_console.status(f"[bold blue]{message}[/bold blue]") as status:
+                self._current_status = status
+                try:
+                    yield status
+                finally:
+                    self._current_status = None
+        else:
+            # Simple fallback - just print the message
+            click.echo(f"⏳ {message}")
+            try:
+                yield None
+            finally:
+                pass
+
+        _logger.info(f"Completed: {message}")
+
+    def update_status(self, message: str):
+        """Update the current status message (if a status spinner is active)."""
+        if self._current_status and hasattr(self._current_status, 'update'):
+            self._current_status.update(f"[bold blue]{message}[/bold blue]")
+        _logger.info(message)
+
+
+# Global console instance
+console = Console()
 
 
 class ProgressTracker:

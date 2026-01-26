@@ -10,6 +10,15 @@ A CLI for running HuggingFace models, optimized for AMD ROCm.
 
 [![Watch hftool interactive mode demo](https://img.youtube.com/vi/oYANVmglEhs/maxresdefault.jpg)](https://www.youtube.com/watch?v=oYANVmglEhs)
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Configuration Guide](docs/configuration.md) | Config files, locations, and examples |
+| [Environment Variables](docs/environment.md) | Complete environment variable reference |
+| [GPU Setup Guide](docs/gpu-setup.md) | AMD ROCm, NVIDIA CUDA, Apple MPS setup |
+| [.env.example](.env.example) | Copy this to `.env` for quick setup |
+
 ## Features
 
 ### AI Tasks

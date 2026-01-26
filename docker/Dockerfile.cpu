@@ -56,7 +56,7 @@ COPY pyproject.toml README.md ./
 COPY hftool/ ./hftool/
 
 # Set version for Docker build
-ARG HFTOOL_VERSION=0.7.0
+ARG HFTOOL_VERSION=0.7.1
 RUN echo "__version__ = '${HFTOOL_VERSION}'" > hftool/_version.py
 
 # Install all dependencies (fast, from pre-built wheels)

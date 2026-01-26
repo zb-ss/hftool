@@ -6,6 +6,7 @@ Supports HunyuanVideo-1.5, CogVideoX, Wan2.2, LTX-2, and other diffusers-based v
 from typing import Any, Dict, List, Optional
 from hftool.tasks.base import BaseTask, TextInputMixin
 from hftool.io.output_handler import save_video
+from hftool.utils.progress import console
 
 
 class TextToVideoTask(TextInputMixin, BaseTask):
@@ -98,7 +99,6 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                 - "2": Sequential CPU offload (most memory efficient)
         """
         import os
-        import click
         from hftool.utils.deps import check_dependencies, check_ffmpeg
         check_dependencies(["diffusers", "torch", "accelerate"], extra="with_video")
         check_ffmpeg()
@@ -135,7 +135,7 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         # Get multi-GPU configuration (centralized logic)
         gpu_config = get_multi_gpu_kwargs(reserve_per_gpu_gb=6.0)
         if gpu_config["message"]:
-            click.echo(gpu_config["message"])
+            console.info(gpu_config["message"])
 
         if gpu_config["use_multi_gpu"]:
             load_kwargs["device_map"] = gpu_config["device_map"]
@@ -165,15 +165,15 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         if hasattr(pipe, "vae"):
             if hasattr(pipe.vae, "enable_tiling"):
                 pipe.vae.enable_tiling()
-                click.echo("VAE tiling enabled")
+                console.log("VAE tiling enabled")
             # Slicing processes batch elements one at a time
             if hasattr(pipe.vae, "enable_slicing"):
                 pipe.vae.enable_slicing()
-                click.echo("VAE slicing enabled")
+                console.log("VAE slicing enabled")
         # Pipeline-level VAE slicing (for video frame-by-frame processing)
         if hasattr(pipe, "enable_vae_slicing"):
             pipe.enable_vae_slicing()
-        
+
         # Check if pipeline has been placed on devices via device_map
         has_device_map = hasattr(pipe, "hf_device_map") and pipe.hf_device_map
 
@@ -181,28 +181,28 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             # Check if any component ended up on CPU - this breaks inference
             cpu_components = [k for k, v in pipe.hf_device_map.items() if v == "cpu"]
             if cpu_components:
-                click.echo(f"Warning: Components on CPU will cause errors: {cpu_components}", err=True)
-                click.echo("Falling back to sequential CPU offload...", err=True)
+                console.warn(f"Components on CPU will cause errors: {cpu_components}")
+                console.log("Falling back to sequential CPU offload...")
                 # Reset the device map and use sequential offload instead
                 pipe = pipe.to("cpu")  # Reset to CPU first
                 if hasattr(pipe, "enable_sequential_cpu_offload"):
                     pipe.enable_sequential_cpu_offload()
                 else:
-                    click.echo("Using model CPU offload as fallback...")
+                    console.log("Using model CPU offload as fallback...")
                     pipe.enable_model_cpu_offload()
             else:
-                click.echo(f"Model distributed across devices: {pipe.hf_device_map}")
+                console.log(f"Model distributed across devices: {pipe.hf_device_map}")
         elif disable_cpu_offload:
             # User explicitly disabled CPU offload
-            click.echo(f"Loading model fully on {device}...")
+            console.log(f"Loading model fully on {device}...")
             pipe.to(device)
         elif use_sequential_offload:
             # Sequential offload - most memory efficient, slower
             if hasattr(pipe, "enable_sequential_cpu_offload"):
-                click.echo("Enabling sequential CPU offload (most memory-efficient)...")
+                console.log("Enabling sequential CPU offload (most memory-efficient)...")
                 pipe.enable_sequential_cpu_offload()
             elif hasattr(pipe, "enable_model_cpu_offload"):
-                click.echo("Enabling model CPU offload...")
+                console.log("Enabling model CPU offload...")
                 pipe.enable_model_cpu_offload()
             else:
                 pipe.to(device)
@@ -210,10 +210,10 @@ class TextToVideoTask(TextInputMixin, BaseTask):
             # Default for video: use sequential offload for large models, model offload otherwise
             # Sequential is slower but handles models larger than VRAM
             if hasattr(pipe, "enable_sequential_cpu_offload"):
-                click.echo("Enabling sequential CPU offload (required for large video models)...")
+                console.log("Enabling sequential CPU offload (required for large video models)...")
                 pipe.enable_sequential_cpu_offload()
             elif hasattr(pipe, "enable_model_cpu_offload"):
-                click.echo("Enabling model CPU offload...")
+                console.log("Enabling model CPU offload...")
                 pipe.enable_model_cpu_offload()
             else:
                 pipe.to(device)
@@ -227,10 +227,9 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         then uses CPU offload for VAE to prevent OOM during decode.
         """
         import os
-        import click
         import torch
         from hftool.core.device import get_device_info
-        
+
         device_info = get_device_info()
         num_gpus = device_info.device_count
         
@@ -248,10 +247,10 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         try:
             if use_multi_gpu:
                 # Multi-GPU: Load transformer distributed across GPUs, VAE with CPU offload
-                click.echo(f"Loading HunyuanVideo with multi-GPU transformer ({num_gpus} GPUs)...")
-                
+                console.log(f"Loading HunyuanVideo with multi-GPU transformer ({num_gpus} GPUs)...")
+
                 from diffusers import HunyuanVideo15Pipeline, AutoModel
-                
+
                 # Calculate max memory per GPU for transformer (leave room for other ops)
                 max_memory = {}
                 for i in range(num_gpus):
@@ -260,7 +259,7 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                         max_memory[i] = f"{int(mem_gb - 4)}GB"  # Reserve 4GB per GPU
                     except Exception:
                         pass
-                
+
                 # Load transformer distributed across GPUs
                 transformer = AutoModel.from_pretrained(
                     model,
@@ -269,7 +268,7 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                     device_map="auto",
                     max_memory=max_memory if max_memory else None,
                 )
-                click.echo(f"Transformer distributed: {getattr(transformer, 'hf_device_map', 'single device')}")
+                console.log(f"Transformer distributed: {getattr(transformer, 'hf_device_map', 'single device')}")
                 
                 # Load pipeline without transformer (we'll add it)
                 pipe = HunyuanVideo15Pipeline.from_pretrained(
@@ -316,7 +315,6 @@ class TextToVideoTask(TextInputMixin, BaseTask):
 
         See: https://huggingface.co/Lightricks/LTX-2
         """
-        import click
         from hftool.utils.errors import HFToolError
 
         if "torch_dtype" not in kwargs:
@@ -346,22 +344,20 @@ class TextToVideoTask(TextInputMixin, BaseTask):
                 )
 
             # Native mode: try to auto-install
-            click.echo(
-                "LTX2Pipeline not available. Installing diffusers from main branch..."
-            )
+            console.info("LTX2Pipeline not available. Installing diffusers from main branch...")
             from hftool.core.download import install_pip_dependencies
             success = install_pip_dependencies(
                 ["git+https://github.com/huggingface/diffusers"],
                 force=True
             )
             if success:
-                click.echo("Diffusers updated. Please restart hftool to use LTX-2.")
+                console.info("Diffusers updated. Please restart hftool to use LTX-2.")
             raise HFToolError(
                 "LTX-2 requires diffusers main branch (0.37.0+) which was just installed.",
                 suggestion="Please restart hftool to use the updated diffusers library."
             )
 
-        click.echo(f"Loading {pipeline_name}...")
+        console.log(f"Loading {pipeline_name}...")
         pipe = LTXPipeline.from_pretrained(model, **kwargs)
         return pipe
     
