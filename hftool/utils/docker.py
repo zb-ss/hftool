@@ -40,6 +40,176 @@ class HardwareInfo:
         return self.docker_available and self.platform != GPUPlatform.MPS
 
 
+@dataclass
+class GPUInfo:
+    """Information about a detected GPU."""
+    index: int
+    name: str
+    render_device: str  # e.g., /dev/dri/renderD128
+    card_device: str  # e.g., /dev/dri/card0
+    vram_gb: Optional[float] = None
+    is_display_gpu: bool = False
+
+
+def list_amd_gpus() -> List[GPUInfo]:
+    """Detect all AMD GPUs and their render device paths.
+
+    Uses /sys/class/drm to enumerate GPUs and map them to /dev/dri/renderD* devices.
+    The mapping is done by matching PCI device paths between card* and renderD* entries.
+
+    Returns:
+        List of GPUInfo for each detected AMD GPU
+    """
+    gpus = []
+    drm_path = Path("/sys/class/drm")
+
+    if not drm_path.exists():
+        return gpus
+
+    # Build a map of PCI device path -> renderD* device
+    render_devices_map = {}
+    for entry in drm_path.iterdir():
+        if entry.name.startswith("renderD"):
+            try:
+                pci_path = (entry / "device").resolve()
+                render_devices_map[str(pci_path)] = f"/dev/dri/{entry.name}"
+            except Exception:
+                continue
+
+    # Find all card* entries (not renderD* or card*-connectors)
+    card_entries = sorted([
+        d for d in drm_path.iterdir()
+        if d.name.startswith("card") and d.name[4:].isdigit()
+    ], key=lambda x: int(x.name[4:]))
+
+    gpu_index = 0  # Assign sequential indices for user-facing selection
+    for card_dir in card_entries:
+        device_path = card_dir / "device"
+        vendor_path = device_path / "vendor"
+
+        # Check if this is an AMD device (vendor 0x1002)
+        if not vendor_path.exists():
+            continue
+
+        try:
+            vendor = vendor_path.read_text().strip()
+            if vendor != "0x1002":
+                continue
+        except Exception:
+            continue
+
+        card_num = int(card_dir.name[4:])
+        card_device = f"/dev/dri/{card_dir.name}"
+
+        # Find the corresponding renderD* device by matching PCI device path
+        try:
+            pci_path = str(device_path.resolve())
+            render_device = render_devices_map.get(pci_path)
+        except Exception:
+            render_device = None
+
+        # Verify the render device exists
+        if not render_device or not os.path.exists(render_device):
+            continue
+
+        # Try to get GPU name
+        gpu_name = f"AMD GPU {gpu_index}"
+        try:
+            # Try rocm-smi first for better names (use gpu_index as rocm-smi device number)
+            result = subprocess.run(
+                ["rocm-smi", "-d", str(gpu_index), "--showproductname"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if "Card series" in line:
+                        parts = line.split(":")
+                        if len(parts) >= 2:
+                            gpu_name = parts[-1].strip()
+                            break
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            # Fallback: try to read from uevent
+            try:
+                uevent_path = device_path / "uevent"
+                if uevent_path.exists():
+                    uevent = uevent_path.read_text()
+                    for line in uevent.splitlines():
+                        if line.startswith("PCI_ID="):
+                            pci_id = line.split("=")[1]
+                            gpu_name = f"AMD GPU ({pci_id})"
+                            break
+            except Exception:
+                pass
+
+        # Try to get VRAM size
+        vram_gb = None
+        try:
+            # Check for VRAM via amdgpu driver sysfs
+            vram_path = device_path / "mem_info_vram_total"
+            if vram_path.exists():
+                vram_bytes = int(vram_path.read_text().strip())
+                vram_gb = round(vram_bytes / (1024**3), 1)
+        except Exception:
+            pass
+
+        # Check if this GPU is being used for display
+        # A GPU driving a display typically has active connectors
+        is_display = False
+        try:
+            for entry in card_dir.iterdir():
+                if entry.name.startswith(card_dir.name + "-"):
+                    # This is a connector (e.g., card0-DP-1)
+                    status_path = entry / "status"
+                    if status_path.exists():
+                        status = status_path.read_text().strip()
+                        if status == "connected":
+                            is_display = True
+                            break
+        except Exception:
+            pass
+
+        gpus.append(GPUInfo(
+            index=gpu_index,
+            name=gpu_name,
+            render_device=render_device,
+            card_device=card_device,
+            vram_gb=vram_gb,
+            is_display_gpu=is_display,
+        ))
+        gpu_index += 1
+
+    return gpus
+
+
+# Cache GPU list for repeated lookups
+_cached_gpu_list: Optional[List[GPUInfo]] = None
+
+
+def get_render_devices_for_gpus(gpu_indices: List[int]) -> List[str]:
+    """Get the /dev/dri/renderD* paths for specific GPU indices.
+
+    Args:
+        gpu_indices: List of GPU indices (0, 1, 2, etc. as shown in interactive selection)
+
+    Returns:
+        List of render device paths (e.g., ["/dev/dri/renderD128", "/dev/dri/renderD129"])
+    """
+    global _cached_gpu_list
+    if _cached_gpu_list is None:
+        _cached_gpu_list = list_amd_gpus()
+
+    # Build index-to-render-device map
+    gpu_map = {gpu.index: gpu.render_device for gpu in _cached_gpu_list}
+
+    devices = []
+    for idx in gpu_indices:
+        if idx in gpu_map:
+            devices.append(gpu_map[idx])
+    return devices
+
+
 def detect_rocm_gpu() -> Tuple[bool, Optional[str]]:
     """Detect AMD ROCm GPU without importing torch.
 
@@ -374,12 +544,27 @@ def get_docker_run_command(
 
     # Platform-specific GPU flags with optional GPU selection
     if hardware.platform == GPUPlatform.ROCM:
-        # For ROCm, /dev/kfd is always shared but GPUs are restricted via env vars
+        # /dev/kfd is always required for ROCm compute
         cmd.extend([
             "--device=/dev/kfd",
-            "--device=/dev/dri",
             "--security-opt", "seccomp=unconfined",
         ])
+
+        # GPU device passthrough: pass only specific render devices if selected
+        if gpu_indices:
+            # Pass only the selected GPU render devices
+            render_devices = get_render_devices_for_gpus(gpu_indices)
+            for device in render_devices:
+                cmd.extend(["--device", device])
+            # Container sees GPUs as 0, 1, 2... regardless of host indices
+            # So we set HIP_VISIBLE_DEVICES to container indices (0,1,2...)
+            container_indices = ",".join(str(i) for i in range(len(gpu_indices)))
+            cmd.extend(["-e", f"HIP_VISIBLE_DEVICES={container_indices}"])
+            cmd.extend(["-e", f"ROCR_VISIBLE_DEVICES={container_indices}"])
+        else:
+            # No specific GPU selected - pass all of /dev/dri
+            cmd.extend(["--device=/dev/dri"])
+
         # Use numeric GIDs instead of group names for --user compatibility
         # Group names inside container may not match host GIDs
         added_gids = set()
@@ -390,25 +575,30 @@ def get_docker_run_command(
         except OSError:
             cmd.extend(["--group-add", "render"])
         try:
-            # Get video group from any renderD* device
-            for entry in os.listdir("/dev/dri"):
-                if entry.startswith("renderD") or entry.startswith("card"):
-                    dri_gid = os.stat(f"/dev/dri/{entry}").st_gid
-                    if dri_gid not in added_gids:  # Don't add duplicate
+            # Get video group from render device(s)
+            devices_to_check = get_render_devices_for_gpus(gpu_indices) if gpu_indices else []
+            if not devices_to_check:
+                # Fallback to any render device
+                for entry in os.listdir("/dev/dri"):
+                    if entry.startswith("renderD"):
+                        devices_to_check.append(f"/dev/dri/{entry}")
+                        break
+            for device in devices_to_check:
+                try:
+                    dri_gid = os.stat(device).st_gid
+                    if dri_gid not in added_gids:
                         cmd.extend(["--group-add", str(dri_gid)])
                         added_gids.add(dri_gid)
-                    break
+                except OSError:
+                    pass
         except OSError:
             cmd.extend(["--group-add", "video"])
+
         # Pass through HSA_OVERRIDE_GFX_VERSION if set
         gfx_version = os.environ.get("HSA_OVERRIDE_GFX_VERSION")
         if gfx_version:
             cmd.extend(["-e", f"HSA_OVERRIDE_GFX_VERSION={gfx_version}"])
-        # GPU isolation via HIP_VISIBLE_DEVICES and ROCR_VISIBLE_DEVICES
-        if gpu_indices:
-            visible = ",".join(str(i) for i in gpu_indices)
-            cmd.extend(["-e", f"HIP_VISIBLE_DEVICES={visible}"])
-            cmd.extend(["-e", f"ROCR_VISIBLE_DEVICES={visible}"])
+
         # Suppress MIOpen workspace warnings (harmless but noisy)
         # Level 4 = errors only (0=all, 1=info, 2=warnings, 4=errors, 5=fatal)
         cmd.extend(["-e", "MIOPEN_LOG_LEVEL=4"])
@@ -720,3 +910,117 @@ def should_use_docker(hardware: Optional[HardwareInfo] = None) -> bool:
 
     # No preference set - will trigger first-run wizard
     return False
+
+
+def interactive_gpu_select(platform: GPUPlatform = GPUPlatform.ROCM) -> Optional[List[int]]:
+    """Interactive GPU selection for Docker mode.
+
+    Detects available GPUs and presents a menu for selection.
+
+    Args:
+        platform: GPU platform (currently only ROCM supported)
+
+    Returns:
+        List of selected GPU indices, or None if cancelled
+    """
+    if platform == GPUPlatform.ROCM:
+        gpus = list_amd_gpus()
+    else:
+        # For other platforms, return None (use all GPUs)
+        return None
+
+    if not gpus:
+        print("No AMD GPUs detected.")
+        return None
+
+    if len(gpus) == 1:
+        # Only one GPU, select it automatically
+        gpu = gpus[0]
+        display_note = " (display)" if gpu.is_display_gpu else ""
+        vram_str = f", {gpu.vram_gb}GB" if gpu.vram_gb else ""
+        print(f"  Using GPU 0: {gpu.name}{vram_str}{display_note}")
+        return [0]
+
+    # Multiple GPUs - show selection menu
+    print("\n  Available GPUs:")
+    for gpu in gpus:
+        display_note = " (display)" if gpu.is_display_gpu else ""
+        vram_str = f", {gpu.vram_gb}GB" if gpu.vram_gb else ""
+        print(f"    [{gpu.index}] {gpu.name}{vram_str}{display_note}")
+
+    # Find non-display GPU as default recommendation
+    non_display_gpus = [g for g in gpus if not g.is_display_gpu]
+    if non_display_gpus:
+        default = str(non_display_gpus[0].index)
+        default_hint = f" [default: {default}]"
+    else:
+        default = "0"
+        default_hint = " [default: 0]"
+
+    print(f"\n  Enter GPU number(s), comma-separated for multi-GPU{default_hint}")
+    print("  Press Enter for default, 'all' for all GPUs, 'q' to cancel")
+
+    try:
+        choice = input("  GPU> ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\n  Cancelled.")
+        return None
+
+    if choice == "q":
+        return None
+
+    if choice == "" or choice == "auto":
+        return [int(default)]
+
+    if choice == "all":
+        return [g.index for g in gpus]
+
+    # Parse comma-separated indices
+    try:
+        indices = [int(x.strip()) for x in choice.split(",")]
+        valid_indices = [g.index for g in gpus]
+        for idx in indices:
+            if idx not in valid_indices:
+                print(f"  Invalid GPU index: {idx}")
+                return None
+        return indices
+    except ValueError:
+        print(f"  Invalid input: {choice}")
+        return None
+
+
+def parse_gpu_arg(gpu_arg: Optional[str], platform: GPUPlatform = GPUPlatform.ROCM) -> Optional[List[int]]:
+    """Parse --gpu argument value into GPU indices.
+
+    Args:
+        gpu_arg: Value from --gpu argument (e.g., "1", "0,1", "all", "auto", None)
+        platform: GPU platform
+
+    Returns:
+        List of GPU indices, or None to use all GPUs
+    """
+    if gpu_arg is None:
+        return None
+
+    gpu_arg = gpu_arg.strip().lower()
+
+    if gpu_arg == "all":
+        return None  # None means all GPUs
+
+    if gpu_arg == "auto":
+        # Auto-select best non-display GPU
+        if platform == GPUPlatform.ROCM:
+            gpus = list_amd_gpus()
+            non_display = [g for g in gpus if not g.is_display_gpu]
+            if non_display:
+                return [non_display[0].index]
+            elif gpus:
+                return [gpus[0].index]
+        return None
+
+    # Parse comma-separated indices
+    try:
+        indices = [int(x.strip()) for x in gpu_arg.split(",")]
+        return indices
+    except ValueError:
+        return None

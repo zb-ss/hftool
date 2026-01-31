@@ -108,6 +108,83 @@ if "PYTORCH_HIP_ALLOC_CONF" not in os.environ:
 if "PYTORCH_CUDA_ALLOC_CONF" not in os.environ:
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
+# =============================================================================
+# GPU Selection Re-exec
+# =============================================================================
+# CUDA_VISIBLE_DEVICES / HIP_VISIBLE_DEVICES must be set BEFORE torch is imported.
+# Since torch may be imported by other modules, we parse --gpu early and re-exec
+# if needed, so the env vars are set before any Python code runs.
+#
+# This is skipped in Docker (HFTOOL_IN_DOCKER=1) because Docker controls GPU
+# visibility through device passthrough.
+
+def _gpu_reexec_if_needed():
+    """Check for --gpu argument and re-exec with GPU env vars if needed."""
+    # Skip in Docker - Docker handles GPU visibility
+    if os.environ.get("HFTOOL_IN_DOCKER"):
+        return
+
+    # Skip if we already re-exec'd (prevent infinite loop)
+    if os.environ.get("_HFTOOL_GPU_REEXEC"):
+        return
+
+    # Parse --gpu from sys.argv (before click parses it)
+    gpu_value = None
+    args = sys.argv[1:]
+    for i, arg in enumerate(args):
+        if arg == "--gpu" and i + 1 < len(args):
+            gpu_value = args[i + 1]
+            break
+        elif arg.startswith("--gpu="):
+            gpu_value = arg.split("=", 1)[1]
+            break
+
+    # No --gpu specified or auto mode - let normal flow handle it
+    if not gpu_value or gpu_value == "auto":
+        return
+
+    # Parse GPU indices
+    if gpu_value == "all":
+        # "all" mode - don't restrict GPUs, but set multi-GPU flag
+        os.environ["HFTOOL_MULTI_GPU"] = "1"
+        os.environ["_HFTOOL_GPU_REEXEC"] = "1"
+        # Re-exec using -m hftool to ensure correct module loading
+        os.execv(sys.executable, [sys.executable, "-m", "hftool"] + sys.argv[1:])
+
+    # Specific GPU index(es) like "1" or "0,2"
+    try:
+        gpu_indices = [int(x.strip()) for x in gpu_value.split(",")]
+    except ValueError:
+        return  # Invalid GPU spec, let click handle the error
+
+    # Determine if ROCm or CUDA
+    is_rocm = (
+        os.path.exists("/opt/rocm") or
+        os.environ.get("ROCM_PATH") or
+        os.environ.get("HIP_PATH") or
+        os.environ.get("HSA_OVERRIDE_GFX_VERSION")  # Common ROCm env var
+    )
+
+    # Set the appropriate environment variable
+    visible_devices = ",".join(str(i) for i in gpu_indices)
+    if is_rocm:
+        os.environ["HIP_VISIBLE_DEVICES"] = visible_devices
+        os.environ["ROCR_VISIBLE_DEVICES"] = visible_devices
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = visible_devices
+
+    # Set multi-GPU flag if multiple GPUs selected
+    if len(gpu_indices) > 1:
+        os.environ["HFTOOL_MULTI_GPU"] = "1"
+
+    # Mark that we've done the re-exec and re-launch
+    os.environ["_HFTOOL_GPU_REEXEC"] = "1"
+    # Re-exec using -m hftool to ensure correct module loading
+    os.execv(sys.executable, [sys.executable, "-m", "hftool"] + sys.argv[1:])
+
+# Run the re-exec check immediately
+_gpu_reexec_if_needed()
+
 import click
 
 # Import shell completion functions
@@ -2893,18 +2970,23 @@ def docker_run(ctx: click.Context, gpu: Optional[str], hftool_args: tuple):
     """Run hftool command inside Docker container.
 
     Pass hftool arguments after the run command (use -- to separate if needed).
+    Uses device passthrough to pass only selected GPU(s) to the container.
 
     \b
     Examples:
       hftool docker run -t t2i -i "A cat" -o cat.png
       hftool docker run --gpu 1 -- -t t2v -i "A cat" -o cat.mp4
-      hftool docker run -- -t t2i -i "A cat" -o cat.png
+      hftool docker run --gpu auto -- -t t2i -i "A cat" -o cat.png
       hftool docker run --help
     """
     import os
+    import sys
     import subprocess
     import platform
-    from hftool.utils.docker import detect_hardware, run_in_docker
+    from hftool.utils.docker import (
+        detect_hardware, run_in_docker, GPUPlatform,
+        parse_gpu_arg, interactive_gpu_select, list_amd_gpus
+    )
 
     hw = detect_hardware()
 
@@ -2915,8 +2997,19 @@ def docker_run(ctx: click.Context, gpu: Optional[str], hftool_args: tuple):
     # Parse GPU selection
     gpu_indices = None
     if gpu:
-        from hftool.core.device import parse_gpu_selection
-        gpu_indices = parse_gpu_selection(gpu)
+        # Explicit GPU specified via --gpu
+        gpu_indices = parse_gpu_arg(gpu, hw.platform)
+    elif hw.platform == GPUPlatform.ROCM and sys.stdin.isatty():
+        # Interactive mode: offer GPU selection if multiple AMD GPUs
+        gpus = list_amd_gpus()
+        if len(gpus) > 1:
+            gpu_indices = interactive_gpu_select(hw.platform)
+            if gpu_indices is None:
+                # User cancelled
+                raise SystemExit(0)
+        elif len(gpus) == 1:
+            # Single GPU - use it
+            gpu_indices = [gpus[0].index]
 
     # Combine explicit args and context args
     args = list(hftool_args) + list(ctx.args)

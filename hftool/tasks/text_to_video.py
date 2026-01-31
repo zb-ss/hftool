@@ -303,8 +303,13 @@ class TextToVideoTask(TextInputMixin, BaseTask):
         """Load Wan2.x pipeline."""
         if "torch_dtype" not in kwargs:
             kwargs["torch_dtype"] = dtype
-        from diffusers import DiffusionPipeline
-        pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
+
+        if self.mode == "i2v" or "i2v" in model.lower():
+            from diffusers import WanImageToVideoPipeline
+            pipe = WanImageToVideoPipeline.from_pretrained(model, **kwargs)
+        else:
+            from diffusers import WanPipeline
+            pipe = WanPipeline.from_pretrained(model, **kwargs)
         return pipe
 
     def _load_ltx2(self, model: str, dtype, **kwargs) -> Any:

@@ -55,7 +55,39 @@ hftool docker build
 
 # Run commands in Docker container
 hftool docker run -- -t t2i -i "A cat" -o cat.png
+
+# GPU selection for multi-GPU systems (AMD only)
+hftool docker run --gpu 1 -- -t t2v -i "A cat" -o cat.mp4
+hftool docker run --gpu auto -- -t t2i -i "A cat" -o cat.png
 ```
+
+### Docker GPU Selection (AMD ROCm)
+
+For multi-GPU AMD systems, `hftool docker run` uses **device passthrough** instead of environment variables for reliable GPU isolation. Key functions in `hftool/utils/docker.py`:
+
+```python
+# Detect GPUs and their render devices
+list_amd_gpus() -> List[GPUInfo]  # Returns [GPUInfo(index=0, render_device="/dev/dri/renderD128", ...), ...]
+
+# Map user indices to render devices
+get_render_devices_for_gpus([1]) -> ["/dev/dri/renderD129"]
+
+# Interactive picker (shown when multiple GPUs detected)
+interactive_gpu_select() -> Optional[List[int]]
+
+# Parse --gpu argument
+parse_gpu_arg("auto") -> [1]  # Returns non-display GPU
+parse_gpu_arg("0,1") -> [0, 1]
+```
+
+When `--gpu 1` is specified, the Docker command passes only that GPU's render device:
+```bash
+docker run ... --device=/dev/kfd --device=/dev/dri/renderD129 ...
+```
+
+This is more reliable than `HIP_VISIBLE_DEVICES` because the container only sees the selected GPU(s).
+
+**Note:** NVIDIA users are unaffected - they still use the standard `--gpus` flag.
 
 ### Docker Files
 
@@ -144,7 +176,7 @@ Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`,
 | `tasks/base.py` | Abstract BaseTask class and mixins |
 | `io/interactive_mode.py` | Full interactive wizard (-I flag) |
 | `utils/errors.py` | Error handling with pattern matching |
-| `utils/docker.py` | Docker utilities and hardware detection |
+| `utils/docker.py` | Docker utilities, hardware detection, GPU device passthrough |
 | `docker/` | Dockerfiles for ROCm, CUDA, CPU |
 
 ## Adding New Models
