@@ -196,7 +196,7 @@ class ProgressTracker:
         self._start_time = time.time()
         
         if self._use_rich:
-            self._console = Console()
+            self._console = RichConsole()
             self._progress = Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
