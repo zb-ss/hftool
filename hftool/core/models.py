@@ -318,12 +318,35 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
     # TEXT-TO-SPEECH MODELS
     # =========================================================================
     "text-to-speech": {
+        "kokoro": ModelInfo(
+            repo_id="hexgrad/Kokoro-82M",
+            name="Kokoro 82M",
+            model_type=ModelType.CUSTOM,
+            size_gb=0.3,
+            is_default=True,
+            description="Fast lightweight TTS (82M params, CPU-capable, Apache 2.0)",
+            pip_dependencies=["kokoro>=0.8.0"],
+            metadata={"sample_rate": 24000},
+        ),
+        "chatterbox": ModelInfo(
+            repo_id="ResembleAI/chatterbox",
+            name="Chatterbox TTS",
+            model_type=ModelType.CUSTOM,
+            size_gb=2.0,
+            description="Voice-cloning TTS with emotion control (0.5B, MIT)",
+            pip_dependencies=["chatterbox-tts"],
+            metadata={
+                "sample_rate": 24000,
+                "exaggeration": 0.4,
+                "cfg_weight": 0.5,
+                "temperature": 0.7,
+            },
+        ),
         "bark-small": ModelInfo(
             repo_id="suno/bark-small",
             name="Bark Small",
             model_type=ModelType.TRANSFORMERS,
             size_gb=1.5,
-            is_default=True,
             description="Suno Bark TTS (small, fast)",
         ),
         "bark": ModelInfo(
@@ -340,15 +363,6 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
             size_gb=0.3,
             description="Facebook's multilingual TTS (English, lightweight)",
         ),
-        # VibeVoice disabled - streaming API not compatible with current inference code
-        # "vibevoice": ModelInfo(
-        #     repo_id="microsoft/VibeVoice-Realtime-0.5B",
-        #     name="VibeVoice Realtime",
-        #     model_type=ModelType.CUSTOM,
-        #     size_gb=1.0,
-        #     description="Microsoft's realtime TTS model",
-        #     pip_dependencies=["vibevoice"],
-        # ),
     },
     
     # =========================================================================
@@ -526,6 +540,45 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
         ),
     },
     
+    # =========================================================================
+    # VISION-LANGUAGE MODELS
+    # =========================================================================
+    "vision-language": {
+        "qwen3.5-9b": ModelInfo(
+            repo_id="Qwen/Qwen3.5-9B",
+            name="Qwen 3.5 (9B)",
+            model_type=ModelType.TRANSFORMERS,
+            size_gb=18.0,
+            is_default=True,
+            description="Qwen 3.5 multimodal VLM (9B, fits 48GB VRAM)",
+            pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
+        ),
+        "qwen3.5-4b": ModelInfo(
+            repo_id="Qwen/Qwen3.5-4B",
+            name="Qwen 3.5 (4B)",
+            model_type=ModelType.TRANSFORMERS,
+            size_gb=8.0,
+            description="Qwen 3.5 lightweight VLM (4B, testing/low VRAM)",
+            pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
+        ),
+        "qwen3.5-27b": ModelInfo(
+            repo_id="Qwen/Qwen3.5-27B",
+            name="Qwen 3.5 (27B)",
+            model_type=ModelType.TRANSFORMERS,
+            size_gb=54.0,
+            description="Qwen 3.5 high-quality VLM (27B, needs FP8 or multi-GPU)",
+            pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
+        ),
+        "internvl3.5-8b": ModelInfo(
+            repo_id="OpenGVLab/InternVL3_5-8B",
+            name="InternVL 3.5 (8B)",
+            model_type=ModelType.TRANSFORMERS,
+            size_gb=17.0,
+            description="InternVL 3.5 multimodal VLM (non-Qwen alternative)",
+            pip_dependencies=["transformers>=4.45.0", "accelerate>=0.26.0"],
+        ),
+    },
+
     # =========================================================================
     # IMAGE-TO-TEXT MODELS
     # =========================================================================

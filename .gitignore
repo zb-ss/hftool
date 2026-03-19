@@ -136,3 +136,4 @@ cython_debug/
 # Projectile marker file
 .projectile
 /files/
+/local/

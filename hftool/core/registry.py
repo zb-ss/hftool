@@ -114,17 +114,18 @@ TASK_REGISTRY: Dict[str, TaskConfig] = {
     # ============================================
     "text-to-speech": TaskConfig(
         handler="hftool.tasks.text_to_speech",
-        library="transformers",
+        library="custom",
         input_type="text",
         output_type="audio",
-        required_deps=["transformers", "soundfile", "torch"],
+        required_deps=["torch"],
         requires_ffmpeg=True,  # For MP3 conversion
         default_models=[
-            "microsoft/VibeVoice-Realtime-0.5B",
+            "hexgrad/Kokoro-82M",
+            "ResembleAI/chatterbox",
             "suno/bark-small",
             "facebook/mms-tts-eng",
         ],
-        description="Generate speech from text (VibeVoice, Bark, MMS-TTS)",
+        description="Generate speech from text (Kokoro, Chatterbox, Bark, MMS-TTS)",
     ),
     
     # ============================================
@@ -251,6 +252,39 @@ TASK_REGISTRY: Dict[str, TaskConfig] = {
     ),
     
     # ============================================
+    # VOICEOVER (pipeline orchestrator)
+    # ============================================
+    "voiceover": TaskConfig(
+        handler="hftool.tasks.voiceover",
+        library="custom",
+        input_type="text",
+        output_type="video",
+        required_deps=["torch"],
+        requires_ffmpeg=True,
+        default_models=[
+            "hexgrad/Kokoro-82M",
+            "ResembleAI/chatterbox",
+        ],
+        description="Generate voiceover from script + video (Kokoro, Chatterbox TTS)",
+    ),
+
+    # ============================================
+    # VISION-LANGUAGE (transformers)
+    # ============================================
+    "vision-language": TaskConfig(
+        handler="hftool.tasks.vision_language",
+        library="transformers",
+        input_type="image",
+        output_type="text",
+        required_deps=["transformers", "PIL", "torch", "accelerate"],
+        default_models=[
+            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3.5-4B",
+        ],
+        description="Analyze images with vision-language models (Qwen 3.5, InternVL)",
+    ),
+
+    # ============================================
     # IMAGE-TO-TEXT (transformers)
     # ============================================
     "image-to-text": TaskConfig(
@@ -279,6 +313,8 @@ TASK_ALIASES: Dict[str, str] = {
     "speech-to-text": "automatic-speech-recognition",
     "llm": "text-generation",
     "qa": "question-answering",
+    "vo": "voiceover",
+    "vlm": "vision-language",
 }
 
 

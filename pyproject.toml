@@ -78,6 +78,47 @@ with_tts = [
     "soundfile>=0.12.0",
 ]
 
+# Chatterbox TTS (voice cloning, emotion control)
+with_tts_chatterbox = [
+    "chatterbox-tts",
+    "soundfile>=0.12.0",
+]
+
+# Kokoro TTS (lightweight, fast, CPU-capable)
+with_tts_kokoro = [
+    "kokoro>=0.8.0",
+    "soundfile>=0.12.0",
+]
+
+# Voiceover pipeline (script parsing + audio merging)
+# Requires system ffmpeg for audio merging and video muxing
+with_voiceover = [
+    "pysrt>=1.1.0",
+    "soundfile>=0.12.0",
+]
+
+# Vision-Language Models (Qwen 3.5, InternVL)
+with_vlm = [
+    "transformers>=4.45.0",
+    "Pillow>=9.0.0",
+    "accelerate>=0.26.0",
+    "qwen-vl-utils>=0.0.8",
+]
+
+# Scene detection (PySceneDetect + OpenCV)
+with_scene_detect = ["scenedetect[opencv]>=0.6.0"]
+
+# Auto-voiceover (VLM + scene detection + voiceover pipeline)
+with_auto_voiceover = [
+    "transformers>=4.45.0",
+    "Pillow>=9.0.0",
+    "accelerate>=0.26.0",
+    "qwen-vl-utils>=0.0.8",
+    "scenedetect[opencv]>=0.6.0",
+    "pysrt>=1.1.0",
+    "soundfile>=0.12.0",
+]
+
 # Speech-to-Text / ASR (Whisper)
 with_stt = [
     "transformers>=4.45.0",
@@ -143,6 +184,10 @@ all = [
     "scipy",
     # Vision advanced
     "opencv-python-headless>=4.5.0",
+    # VLM support
+    "qwen-vl-utils>=0.0.8",
+    # Scene detection
+    "scenedetect[opencv]>=0.6.0",
     # Config file support (Python < 3.11)
     "tomli>=2.0.1,<3.0; python_version < '3.11'",
     # Interactive features
@@ -175,4 +220,4 @@ include = ["hftool*"]
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 # Fallback for Docker builds where there's no .git directory
-fallback_version = "0.7.1"
+fallback_version = "0.9.0"
