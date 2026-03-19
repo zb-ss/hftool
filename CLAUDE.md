@@ -103,13 +103,35 @@ This is more reliable than `HIP_VISIBLE_DEVICES` because the container only sees
 
 ```bash
 # Build from project root
-docker build -f docker/Dockerfile.rocm -t hftool:rocm --build-arg HFTOOL_VERSION=0.5.0 .
+docker build -f docker/Dockerfile.rocm -t hftool:rocm --build-arg HFTOOL_VERSION=0.10.0 .
 
 # Or use hftool (auto-passes version)
 hftool docker build
 ```
 
 **Note:** Dockerfiles use `SETUPTOOLS_SCM_PRETEND_VERSION` since `.git` is not in Docker context. The version is passed via `--build-arg` from `hftool.__version__`.
+
+## TUI (Terminal User Interface)
+
+The TUI (`hftool tui`) is a Textual-based full-screen interface. It runs inside Docker by default for deterministic dependencies.
+
+```bash
+hftool tui                  # Launches via Docker (default)
+hftool tui --native         # Skip Docker, run natively (dev mode)
+hftool tui --gpu 1          # Select specific GPU
+```
+
+**Docker-first flow:** `hftool tui` on host → detects Docker → builds image if needed → runs `hftool tui --native` inside container. Inside Docker (`HFTOOL_IN_DOCKER=1`), the TUI launches directly.
+
+**Architecture:**
+- `tui/app.py` — HFToolApp (Textual App), global CSS (Posting-inspired rounded borders)
+- `tui/screens/` — HomeScreen, TaskScreen, GenerationScreen, VoiceoverScreen, ModelBrowserScreen, SettingsScreen
+- `tui/widgets/` — SystemInfo, ModelTable, FileBrowser (reusable)
+- `tui/bridge.py` — TUIProgressBridge converts worker thread progress → Textual messages
+- `tui/runner.py` — TaskRunner wraps `core/executor.py` for `@work(thread=True)` workers
+- `core/executor.py` — Frontend-agnostic `execute_task(TaskRequest) → TaskResult`
+
+The VoiceoverScreen uses `threading.Event` for pause/resume: the worker thread blocks after script generation while the user edits the script inline via TextArea, then resumes on Continue.
 
 ## Architecture
 
@@ -169,11 +191,27 @@ Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`,
 
 | File | Purpose |
 |------|---------|
-| `cli.py` | Main CLI entry point with all subcommands |
+| `cli/__init__.py` | Re-exports `main()` for backwards compat (`hftool.cli:main`) |
+| `cli/main.py` | Click group, global options, warning/ROCm/GPU-reexec config |
+| `cli/helpers.py` | Shared CLI helpers (parse args, open file, format size) |
+| `cli/commands/task.py` | `run` command + task execution engine |
+| `cli/commands/tui.py` | `hftool tui` — Docker-first TUI launcher |
+| `cli/commands/models.py` | models, download, status, info, clean commands |
+| `cli/commands/docker.py` | Docker group (status, setup, build, run) |
+| `cli/commands/voiceover.py` | Voiceover generation command |
+| `cli/commands/setup.py` | PyTorch detection + setup wizard |
+| `cli/commands/history.py` | Command history view/rerun |
+| `cli/commands/tools.py` | benchmark, completion, doctor commands |
+| `core/executor.py` | Frontend-agnostic task execution (TaskRequest/TaskResult) |
 | `core/models.py` | Model registry (MODEL_REGISTRY dict) |
 | `core/registry.py` | Task registry (TASK_REGISTRY dict) |
 | `core/device.py` | Device detection, multi-GPU via `get_multi_gpu_kwargs()` |
 | `tasks/base.py` | Abstract BaseTask class and mixins |
+| `tui/app.py` | Textual App, CSS, screen routing |
+| `tui/bridge.py` | Thread-safe progress bridge for TUI workers |
+| `tui/runner.py` | TaskRunner wrapping core/executor for TUI |
+| `tui/screens/` | HomeScreen, TaskScreen, GenerationScreen, VoiceoverScreen, etc. |
+| `tui/widgets/` | SystemInfo, ModelTable, FileBrowser widgets |
 | `io/interactive_mode.py` | Full interactive wizard (-I flag) |
 | `utils/errors.py` | Error handling with pattern matching |
 | `utils/docker.py` | Docker utilities, hardware detection, GPU device passthrough |
@@ -289,8 +327,10 @@ raise HFToolError("Message", suggestion="How to fix it")
 - **text-to-image** (t2i): Z-Image, SDXL, FLUX
 - **image-to-image** (i2i): Qwen Image Edit, FLUX.2 Klein (non-commercial), SDXL
 - **text-to-video** (t2v): LTX-2, HunyuanVideo, CogVideoX, Wan2.2
-- **image-to-video** (i2v): LTX-2 I2V, HunyuanVideo I2V
-- **text-to-speech** (tts): Bark, MMS-TTS
+- **image-to-video** (i2v): LTX-2 I2V, HunyuanVideo I2V, Wan2.2 I2V
+- **text-to-speech** (tts): Kokoro, Chatterbox (voice cloning), Bark, MMS-TTS
+- **voiceover** (vo): Auto-voiceover (VLM), re-voice (ASR), manual script
+- **vision-language** (vlm): Qwen 3.5, InternVL 3.5
 - **automatic-speech-recognition** (asr/stt): Whisper
 - Various transformers pipeline tasks (text-generation, summarization, etc.)
 

@@ -57,7 +57,10 @@ hftool -t t2v -i "A cat playing with a ball" -o cat.mp4
 # Transcribe audio
 hftool -t asr -i recording.wav -o transcript.txt
 
-# Auto-voiceover a video (new in v0.9.0)
+# Interactive TUI (runs in Docker — no setup needed)
+hftool tui
+
+# Auto-voiceover a video
 hftool voiceover --auto --video demo.mp4 --output final.mp4
 
 # Re-voice existing narration with a different voice
@@ -75,6 +78,7 @@ hftool -t asr -i @ -o transcript.txt
 
 ## Features
 
+- **TUI** (`hftool tui`) — Full-screen terminal UI, runs in Docker with zero setup
 - **Interactive Wizard** (`-I`) — Guided task, model, and input selection
 - **File Picker** (`@` syntax) — Interactive file selection with fuzzy search
 - **Auto-Voiceover** — VLM-powered video analysis + narration generation
