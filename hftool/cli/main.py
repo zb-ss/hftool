@@ -455,6 +455,7 @@ from hftool.cli.commands.tools import (  # noqa: E402
     doctor_command,
 )
 from hftool.cli.commands.voiceover import voiceover_command  # noqa: E402
+from hftool.cli.commands.tui import tui_command  # noqa: E402
 
 main.add_command(setup_command)
 main.add_command(run_command)
@@ -469,6 +470,7 @@ main.add_command(benchmark_command)
 main.add_command(completion_command)
 main.add_command(doctor_command)
 main.add_command(voiceover_command)
+main.add_command(tui_command)
 
 
 if __name__ == "__main__":

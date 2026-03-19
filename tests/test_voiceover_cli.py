@@ -68,7 +68,7 @@ class TestVoiceoverCLI:
         assert result.returncode == 0
         assert "voiceover" in result.stdout.lower()
 
-    def test_version_is_0_9_0(self):
-        """Version should be 0.9.0."""
+    def test_version_is_0_10_0(self):
+        """Version should be 0.10.0."""
         from hftool import __version__
-        assert __version__ == "0.9.0"
+        assert __version__ == "0.10.0"

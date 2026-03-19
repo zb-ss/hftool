@@ -157,6 +157,11 @@ with_repl = [
     "prompt_toolkit>=3.0.0,<4.0",
 ]
 
+# TUI (Terminal User Interface via Textual)
+with_tui = [
+    "textual>=1.0.0",
+]
+
 # Development dependencies
 dev = [
     "pytest>=7.0.0",
@@ -194,6 +199,8 @@ all = [
     "InquirerPy>=0.3.4,<1.0",
     # REPL mode
     "prompt_toolkit>=3.0.0,<4.0",
+    # TUI
+    "textual>=1.0.0",
 ]
 
 [project.scripts]
@@ -220,4 +227,4 @@ include = ["hftool*"]
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 # Fallback for Docker builds where there's no .git directory
-fallback_version = "0.9.0"
+fallback_version = "0.10.0"
