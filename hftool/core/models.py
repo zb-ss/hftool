@@ -544,29 +544,29 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
     # VISION-LANGUAGE MODELS
     # =========================================================================
     "vision-language": {
-        "qwen3.5-9b": ModelInfo(
-            repo_id="Qwen/Qwen3.5-9B",
-            name="Qwen 3.5 (9B)",
+        "qwen3-vl-8b": ModelInfo(
+            repo_id="Qwen/Qwen3-VL-8B-Instruct",
+            name="Qwen 3 VL (8B)",
             model_type=ModelType.TRANSFORMERS,
-            size_gb=18.0,
+            size_gb=16.0,
             is_default=True,
-            description="Qwen 3.5 multimodal VLM (9B, fits 48GB VRAM)",
+            description="Qwen 3 Vision-Language model (8B, fits 24GB VRAM)",
             pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
         ),
-        "qwen3.5-4b": ModelInfo(
-            repo_id="Qwen/Qwen3.5-4B",
-            name="Qwen 3.5 (4B)",
+        "qwen3-vl-4b": ModelInfo(
+            repo_id="Qwen/Qwen3-VL-4B-Instruct",
+            name="Qwen 3 VL (4B)",
             model_type=ModelType.TRANSFORMERS,
             size_gb=8.0,
-            description="Qwen 3.5 lightweight VLM (4B, testing/low VRAM)",
+            description="Qwen 3 VL lightweight (4B, testing/low VRAM)",
             pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
         ),
-        "qwen3.5-27b": ModelInfo(
-            repo_id="Qwen/Qwen3.5-27B",
-            name="Qwen 3.5 (27B)",
+        "qwen3-vl-2b": ModelInfo(
+            repo_id="Qwen/Qwen3-VL-2B-Instruct",
+            name="Qwen 3 VL (2B)",
             model_type=ModelType.TRANSFORMERS,
-            size_gb=54.0,
-            description="Qwen 3.5 high-quality VLM (27B, needs FP8 or multi-GPU)",
+            size_gb=4.0,
+            description="Qwen 3 VL smallest (2B, fast, limited accuracy)",
             pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
         ),
         "internvl3.5-8b": ModelInfo(
