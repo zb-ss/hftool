@@ -1,6 +1,8 @@
 """Tests for the TUI (Terminal User Interface)."""
 
 import asyncio
+import os
+
 import pytest
 
 
@@ -37,6 +39,79 @@ class TestTUIImports:
         assert SystemInfo is not None
         assert ModelTable is not None
         assert FilePickerScreen is not None
+
+
+class TestFileSearch:
+    """Test the file search functionality."""
+
+    def test_search_finds_python_files(self, tmp_path):
+        from hftool.tui.widgets.file_browser import _search_files
+
+        # Create test files
+        (tmp_path / "foo.py").touch()
+        (tmp_path / "bar.py").touch()
+        (tmp_path / "baz.txt").touch()
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "deep.py").touch()
+
+        results = _search_files(str(tmp_path), "py", extensions=[".py"])
+        filenames = [os.path.basename(r) for r in results]
+        assert "foo.py" in filenames
+        assert "bar.py" in filenames
+        assert "deep.py" in filenames
+        assert "baz.txt" not in filenames
+
+    def test_search_substring_match(self, tmp_path):
+        from hftool.tui.widgets.file_browser import _search_files
+
+        (tmp_path / "servonaut-1.mp4").touch()
+        (tmp_path / "other-video.mp4").touch()
+
+        results = _search_files(str(tmp_path), "servo")
+        assert len(results) == 1
+        assert "servonaut-1.mp4" in results[0]
+
+    def test_search_case_insensitive(self, tmp_path):
+        from hftool.tui.widgets.file_browser import _search_files
+
+        (tmp_path / "MyVideo.MP4").touch()
+        results = _search_files(str(tmp_path), "myvideo")
+        assert len(results) == 1
+
+    def test_search_respects_max_results(self, tmp_path):
+        from hftool.tui.widgets.file_browser import _search_files
+
+        for i in range(20):
+            (tmp_path / f"file_{i}.txt").touch()
+
+        results = _search_files(str(tmp_path), "file", max_results=5)
+        assert len(results) == 5
+
+    def test_search_skips_hidden_dirs(self, tmp_path):
+        from hftool.tui.widgets.file_browser import _search_files
+
+        hidden = tmp_path / ".hidden"
+        hidden.mkdir()
+        (hidden / "secret.txt").touch()
+        (tmp_path / "visible.txt").touch()
+
+        results = _search_files(str(tmp_path), "txt")
+        filenames = [os.path.basename(r) for r in results]
+        assert "visible.txt" in filenames
+        assert "secret.txt" not in filenames
+
+    def test_get_browse_root_native(self):
+        from hftool.tui.widgets.file_browser import get_browse_root
+
+        # Outside Docker, should return home dir
+        old = os.environ.pop("HFTOOL_IN_DOCKER", None)
+        try:
+            root = get_browse_root()
+            assert root == os.path.expanduser("~")
+        finally:
+            if old is not None:
+                os.environ["HFTOOL_IN_DOCKER"] = old
 
 
 class TestTUIBridge:
