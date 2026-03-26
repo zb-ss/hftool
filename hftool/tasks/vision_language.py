@@ -1,13 +1,37 @@
 """Vision-language task handler.
 
-Supports Qwen3.5 VLM for analyzing images, with multi-GPU support.
+Supports Qwen VL models for analyzing images, with multi-GPU support.
 Primarily used for video keyframe analysis in the voiceover pipeline.
 """
 
 import gc
 from typing import Any, Dict, Optional
 
+import torch
 from hftool.tasks.base import BaseTask
+
+
+def _patch_qwen_vl_for_rocm(model) -> None:
+    """Patch torch.repeat_interleave for ROCm compatibility.
+
+    torch.repeat_interleave with CUDA tensors crashes on ROCm HIP
+    (hipErrorIllegalState). This globally patches it to move tensors
+    to CPU, run repeat_interleave there, then move back to the
+    original device. Only activated when ROCm is detected.
+    """
+    _original_repeat_interleave = torch.repeat_interleave
+
+    def _safe_repeat_interleave(input, repeats, *args, **kwargs):
+        # Only patch when both args are CUDA tensors (the problematic case)
+        if isinstance(repeats, torch.Tensor) and repeats.is_cuda:
+            device = input.device
+            result = _original_repeat_interleave(
+                input.cpu(), repeats.cpu(), *args, **kwargs
+            )
+            return result.to(device)
+        return _original_repeat_interleave(input, repeats, *args, **kwargs)
+
+    torch.repeat_interleave = _safe_repeat_interleave
 
 
 class VisionLanguageTask(BaseTask):
@@ -83,6 +107,12 @@ class VisionLanguageTask(BaseTask):
         load_kwargs.update(kwargs)
 
         model_obj = AutoVLM.from_pretrained(model, **load_kwargs)
+
+        # Workaround: torch.repeat_interleave is broken on ROCm HIP
+        # (hipErrorIllegalState). Monkey-patch the vision encoder to run
+        # the cu_seqlens computation on CPU then move back to GPU.
+        if device in ("cuda", "rocm") and hasattr(model_obj, "visual"):
+            _patch_qwen_vl_for_rocm(model_obj)
         processor = AutoProcessor.from_pretrained(model)
 
         self._model = model_obj
