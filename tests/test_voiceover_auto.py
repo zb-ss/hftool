@@ -22,7 +22,7 @@ class TestVoiceoverTaskInit:
         from hftool.tasks.voiceover import VoiceoverTask
 
         task = VoiceoverTask()
-        assert task.vlm_model == "qwen3-vl-8b"
+        assert task.vlm_model == "qwen3.5-9b"
         assert task.narration_style == "tutorial"
         assert task.scene_threshold == 3.0
         assert task.no_edit is False
@@ -52,15 +52,15 @@ class TestVoiceoverResolveVLM:
         from hftool.tasks.voiceover import VoiceoverTask
 
         task = VoiceoverTask()
-        result = task._resolve_vlm_model("qwen3-vl-8b")
-        assert result == "Qwen/Qwen3-VL-8B-Instruct"
+        result = task._resolve_vlm_model("qwen3.5-9b")
+        assert result == "Qwen/Qwen3.5-9B"
 
     def test_resolve_repo_id_passthrough(self):
         from hftool.tasks.voiceover import VoiceoverTask
 
         task = VoiceoverTask()
-        result = task._resolve_vlm_model("Qwen/Qwen3-VL-8B-Instruct")
-        assert result == "Qwen/Qwen3-VL-8B-Instruct"
+        result = task._resolve_vlm_model("Qwen/Qwen3.5-9B")
+        assert result == "Qwen/Qwen3.5-9B"
 
     def test_resolve_unknown_passthrough(self):
         from hftool.tasks.voiceover import VoiceoverTask

@@ -64,15 +64,15 @@ class TestVisionLanguageTaskRegistry:
 
         assert "vision-language" in MODEL_REGISTRY
 
-    def test_qwen3_vl_8b_registered(self):
+    def test_qwen35_9b_registered(self):
         from hftool.core.models import MODEL_REGISTRY
 
-        assert "qwen3-vl-8b" in MODEL_REGISTRY["vision-language"]
+        assert "qwen3.5-9b" in MODEL_REGISTRY["vision-language"]
 
-    def test_qwen3_vl_8b_is_default(self):
+    def test_qwen35_9b_is_default(self):
         from hftool.core.models import MODEL_REGISTRY
 
-        model = MODEL_REGISTRY["vision-language"]["qwen3-vl-8b"]
+        model = MODEL_REGISTRY["vision-language"]["qwen3.5-9b"]
         assert model.is_default is True
 
     def test_only_one_default_model(self):
@@ -85,10 +85,10 @@ class TestVisionLanguageTaskRegistry:
         ]
         assert len(defaults) == 1
 
-    def test_qwen3_vl_models_have_pip_deps(self):
+    def test_qwen35_models_have_pip_deps(self):
         from hftool.core.models import MODEL_REGISTRY
 
-        for key in ("qwen3-vl-8b", "qwen3-vl-4b", "qwen3-vl-2b"):
+        for key in ("qwen3.5-9b", "qwen3.5-4b", "qwen3.5-2b"):
             model = MODEL_REGISTRY["vision-language"][key]
             dep_str = " ".join(model.pip_dependencies)
             assert "qwen-vl-utils" in dep_str, f"{key} missing qwen-vl-utils dependency"
