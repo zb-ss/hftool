@@ -108,10 +108,17 @@ class VisionLanguageTask(BaseTask):
         prompt = input_data["prompt"]
         image_path = input_data.get("image_path")
 
+        # System prompt to disable thinking mode and get direct responses
+        system_msg = {
+            "role": "system",
+            "content": "You are a concise assistant. Answer directly without thinking blocks, analysis headers, or bullet points. No <think> tags.",
+        }
+
         # Text-only mode (no image) — used for script assembly prompts
         if not image_path:
             messages = [
-                {"role": "user", "content": [{"type": "text", "text": prompt}]}
+                system_msg,
+                {"role": "user", "content": [{"type": "text", "text": prompt}]},
             ]
             text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             inputs = processor(text=[text], return_tensors="pt", padding=True)
@@ -129,13 +136,14 @@ class VisionLanguageTask(BaseTask):
                 image = image.resize(new_size, Image.LANCZOS)
 
             messages = [
+                system_msg,
                 {
                     "role": "user",
                     "content": [
                         {"type": "image", "image": image},
                         {"type": "text", "text": prompt},
                     ],
-                }
+                },
             ]
 
             text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -160,10 +168,16 @@ class VisionLanguageTask(BaseTask):
         generated_ids = output_ids[:, inputs["input_ids"].shape[1]:]
         response = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-        # Strip Qwen 3.5 thinking blocks — the model wraps its reasoning in
-        # <think>...</think> tags which aren't special tokens and leak through
+        # Strip thinking artifacts from Qwen 3.5 responses
         import re
-        response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
+        # Remove <think>...</think> blocks
+        response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL)
+        # Remove common analysis preambles the model prepends
+        response = re.sub(
+            r"^(The user wants.*?\n\n|.*?\*\*Analyze.*?\*\*\n)",
+            "", response, flags=re.DOTALL,
+        )
+        response = response.strip()
 
         return {"text": response.strip()}
 
