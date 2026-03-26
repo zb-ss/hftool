@@ -36,7 +36,7 @@ class VoiceoverTask:
         voice_ref: Optional[str] = None,
         exaggeration: float = 0.4,
         segments_dir: Optional[str] = None,
-        vlm_model: str = "qwen3.5-9b",
+        vlm_model: str = "qwen3-vl-8b",
         narration_style: str = "tutorial",
         scene_threshold: float = 3.0,
         no_edit: bool = False,

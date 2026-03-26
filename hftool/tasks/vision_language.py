@@ -40,11 +40,15 @@ class VisionLanguageTask(BaseTask):
         check_dependencies(["transformers", "torch", "PIL"], extra="with_vlm")
 
         from transformers import AutoProcessor
-        # Qwen3.5 uses Qwen3_5ForConditionalGeneration (vision+text).
-        # AutoModelForCausalLM strips the vision encoder (text-only).
-        # AutoModel loads the base model without generate().
-        # AutoModelForImageTextToText loads the correct class with generate().
-        from transformers import AutoModelForImageTextToText as AutoVLM
+        # AutoModelForImageTextToText resolves the correct VLM class:
+        # - Qwen3-VL → Qwen2_5_VLForConditionalGeneration (full attention, works on all GPUs)
+        # - Qwen3.5 → Qwen3_5ForConditionalGeneration (GatedDeltaNet, Instinct GPUs only)
+        # AutoModelForCausalLM would strip the vision encoder (text-only).
+        try:
+            from transformers import AutoModelForImageTextToText as AutoVLM
+        except ImportError:
+            # Older transformers fallback
+            from transformers import AutoModelForCausalLM as AutoVLM
 
         from hftool.core.device import (
             configure_rocm_env,

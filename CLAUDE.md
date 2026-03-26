@@ -330,7 +330,7 @@ raise HFToolError("Message", suggestion="How to fix it")
 - **image-to-video** (i2v): LTX-2 I2V, HunyuanVideo I2V, Wan2.2 I2V
 - **text-to-speech** (tts): Kokoro, Chatterbox (voice cloning), Bark, MMS-TTS
 - **voiceover** (vo): Auto-voiceover (VLM), re-voice (ASR), manual script
-- **vision-language** (vlm): Qwen 3.5, InternVL 3.5
+- **vision-language** (vlm): Qwen 3 VL, InternVL 3.5
 - **automatic-speech-recognition** (asr/stt): Whisper
 - Various transformers pipeline tasks (text-generation, summarization, etc.)
 

@@ -544,29 +544,33 @@ MODEL_REGISTRY: Dict[str, Dict[str, ModelInfo]] = {
     # VISION-LANGUAGE MODELS
     # =========================================================================
     "vision-language": {
-        "qwen3.5-9b": ModelInfo(
-            repo_id="Qwen/Qwen3.5-9B",
-            name="Qwen 3.5 Omni (9B)",
+        # NOTE: Qwen3.5-9B uses GatedDeltaNet (linear attention) which requires
+        # flash-linear-attention Triton kernels. These only work on AMD Instinct
+        # (MI300X) GPUs, NOT consumer RDNA (7900 XTX etc.) — causes hipErrorIllegalState.
+        # Use Qwen3-VL instead which uses standard full attention on all GPUs.
+        "qwen3-vl-8b": ModelInfo(
+            repo_id="Qwen/Qwen3-VL-8B-Instruct",
+            name="Qwen 3 VL (8B)",
             model_type=ModelType.TRANSFORMERS,
-            size_gb=18.0,
+            size_gb=16.0,
             is_default=True,
-            description="Qwen 3.5 unified vision+language model (9B, fits 24GB VRAM)",
+            description="Qwen 3 Vision-Language (8B, works on all AMD/NVIDIA GPUs)",
             pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
         ),
-        "qwen3.5-4b": ModelInfo(
-            repo_id="Qwen/Qwen3.5-4B",
-            name="Qwen 3.5 Omni (4B)",
+        "qwen3-vl-4b": ModelInfo(
+            repo_id="Qwen/Qwen3-VL-4B-Instruct",
+            name="Qwen 3 VL (4B)",
             model_type=ModelType.TRANSFORMERS,
             size_gb=8.0,
-            description="Qwen 3.5 lightweight VLM (4B, low VRAM)",
+            description="Qwen 3 VL lightweight (4B, low VRAM)",
             pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
         ),
-        "qwen3.5-2b": ModelInfo(
-            repo_id="Qwen/Qwen3.5-2B",
-            name="Qwen 3.5 Omni (2B)",
+        "qwen3-vl-2b": ModelInfo(
+            repo_id="Qwen/Qwen3-VL-2B-Instruct",
+            name="Qwen 3 VL (2B)",
             model_type=ModelType.TRANSFORMERS,
             size_gb=4.0,
-            description="Qwen 3.5 smallest (2B, fast, limited accuracy)",
+            description="Qwen 3 VL smallest (2B, fast, limited accuracy)",
             pip_dependencies=["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"],
         ),
         "internvl3.5-8b": ModelInfo(
