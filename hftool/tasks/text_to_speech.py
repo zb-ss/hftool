@@ -110,7 +110,13 @@ class TextToSpeechTask(TextInputMixin, BaseTask):
         from kokoro import KPipeline
 
         lang = kwargs.get("lang", "a")  # 'a' = American English
-        pipe = KPipeline(lang=lang)
+        # kokoro 0.9+ renamed 'lang' to 'lang_code'
+        import inspect
+        sig = inspect.signature(KPipeline.__init__)
+        if "lang_code" in sig.parameters:
+            pipe = KPipeline(lang_code=lang)
+        else:
+            pipe = KPipeline(lang=lang)
 
         return {
             "type": "kokoro",

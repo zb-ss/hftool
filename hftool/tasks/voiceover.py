@@ -118,6 +118,7 @@ class VoiceoverTask:
                     size_gb=model_info.size_gb,
                     task_name="text-to-speech",
                     model_name=model_info.name,
+                    auto_download=True,
                 )
 
         load_kwargs = {}
@@ -125,8 +126,8 @@ class VoiceoverTask:
             load_kwargs["voice_ref"] = self.voice_ref
 
         self._log(f"  Loading TTS model: {self.tts_model}")
-        self._tts_task.load_pipeline(model_id, **load_kwargs)
-        self._tts_task._pipeline = self._tts_task._pipeline  # already set by load_pipeline
+        pipeline = self._tts_task.load_pipeline(model_id, **load_kwargs)
+        self._tts_task._pipeline = pipeline
 
     def _get_segments_dir(self, output_path: str) -> str:
         """Determine segments directory."""
@@ -221,6 +222,7 @@ class VoiceoverTask:
                     size_gb=model_info.size_gb,
                     task_name="vision-language",
                     model_name=model_info.name,
+                    auto_download=True,
                 )
 
         self._log(f"  Loading VLM model: {self.vlm_model}")
