@@ -7,7 +7,6 @@ Provides both directory tree browsing and real-time search.
 from __future__ import annotations
 
 import os
-from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional
 
@@ -35,26 +34,42 @@ def get_browse_root() -> str:
     return os.path.expanduser("~")
 
 
+# Directories to always skip during search
+_SKIP_DIRS = frozenset({
+    ".git", "__pycache__", ".hg", "node_modules", ".tox", ".venv", "venv",
+    ".cache", ".local", ".npm", ".cargo", ".rustup", ".gradle", ".m2",
+    ".hftool", "models", ".ollama", "snap", ".steam", ".wine",
+    "site-packages", "dist-packages",
+})
+
+
 def _search_files(
     root: str,
     query: str,
     extensions: list[str] | None = None,
-    max_results: int = 50,
+    max_results: int = 40,
+    max_depth: int = 5,
 ) -> list[str]:
     """Walk directory tree and return paths matching the query.
 
     Matches filenames by substring (case-insensitive). Filters by extension
-    if provided. Skips hidden directories and common noise (.git, __pycache__).
+    if provided. Skips hidden directories, large cache dirs, and limits depth.
     """
     query_lower = query.lower()
     results: list[str] = []
-    skip_dirs = {".git", "__pycache__", ".hg", "node_modules", ".tox", ".venv", "venv"}
+    root_depth = root.rstrip("/").count("/")
 
     for dirpath, dirnames, filenames in os.walk(root):
-        # Prune hidden/noisy directories in-place
+        # Depth check
+        current_depth = dirpath.rstrip("/").count("/") - root_depth
+        if current_depth >= max_depth:
+            dirnames.clear()
+            continue
+
+        # Prune noisy directories in-place
         dirnames[:] = [
             d for d in dirnames
-            if d not in skip_dirs and not d.startswith(".")
+            if d not in _SKIP_DIRS and not d.startswith(".")
         ]
 
         for filename in filenames:
@@ -166,7 +181,7 @@ class FilePickerScreen(ModalScreen[str]):
     def compose(self) -> ComposeResult:
         with Vertical(id="fp-dialog"):
             yield Input(
-                placeholder="Search files by name...",
+                placeholder="Search files by name (type 2+ chars)...",
                 id="fp-search",
             )
             yield Input(
@@ -185,13 +200,19 @@ class FilePickerScreen(ModalScreen[str]):
         self.query_one("#fp-dialog").border_title = self._title
         self.query_one("#fp-results").display = False
         self.query_one("#fp-results").border_title = "Search Results"
-        # Focus search by default
         self.query_one("#fp-search", Input).focus()
 
     # ── Search ────────────────────────────────────────────────
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id != "fp-search":
+        # Use event.control (works across all Textual versions) to identify the input
+        try:
+            input_id = event.control.id
+        except AttributeError:
+            # Fallback for older Textual
+            input_id = getattr(event, "input", event).id if hasattr(event, "input") else None
+
+        if input_id != "fp-search":
             return
 
         query = event.value.strip()
@@ -200,15 +221,17 @@ class FilePickerScreen(ModalScreen[str]):
             return
 
         self._show_search_mode()
+        self._update_status(f"Searching for '{query}'...")
         self._run_search(query)
 
-    @work(thread=True)
+    @work(thread=True, exclusive=True)
     def _run_search(self, query: str) -> None:
-        """Search files in background thread to keep UI responsive."""
+        """Search files in background thread. exclusive=True cancels previous search."""
         results = _search_files(
             self._root, query,
             extensions=self._extensions,
-            max_results=50,
+            max_results=40,
+            max_depth=5,
         )
         self.app.call_from_thread(self._display_results, results, query)
 
@@ -223,7 +246,6 @@ class FilePickerScreen(ModalScreen[str]):
             return
 
         for path in results:
-            # Show relative path from root for readability
             try:
                 display = os.path.relpath(path, self._root)
             except ValueError:
@@ -232,7 +254,7 @@ class FilePickerScreen(ModalScreen[str]):
             item._file_path = path
             result_list.append(item)
 
-        self._update_status(f"Search: '{query}' — {len(results)} results")
+        self._update_status(f"Search: '{query}' — {len(results)} result{'s' if len(results) != 1 else ''}")
 
     def _show_search_mode(self) -> None:
         if not self._search_mode:
@@ -270,8 +292,15 @@ class FilePickerScreen(ModalScreen[str]):
     # ── Actions ───────────────────────────────────────────────
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "fp-path-input" and event.value:
-            self.dismiss(event.value)
+        try:
+            input_id = event.control.id
+        except AttributeError:
+            input_id = getattr(event, "input", event).id if hasattr(event, "input") else None
+
+        if input_id == "fp-path-input":
+            value = event.value.strip()
+            if value:
+                self.dismiss(value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "fp-select":
