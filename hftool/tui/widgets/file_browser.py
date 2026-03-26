@@ -35,57 +35,121 @@ def get_browse_root() -> str:
 
 
 # Directories to always skip during search
-_SKIP_DIRS = frozenset({
-    ".git", "__pycache__", ".hg", "node_modules", ".tox", ".venv", "venv",
-    ".cache", ".local", ".npm", ".cargo", ".rustup", ".gradle", ".m2",
-    ".hftool", "models", ".ollama", "snap", ".steam", ".wine",
-    "site-packages", "dist-packages",
-})
-
-
 def _search_files(
     root: str,
     query: str,
     extensions: list[str] | None = None,
     max_results: int = 40,
-    max_depth: int = 5,
+    max_depth: int = 6,
 ) -> list[str]:
-    """Walk directory tree and return paths matching the query.
+    """Search for files using `find` (fast) with fallback to Python os.walk.
 
-    Matches filenames by substring (case-insensitive). Filters by extension
-    if provided. Skips hidden directories, large cache dirs, and limits depth.
+    Supports:
+    - Substring match: "servo" finds servonaut-1.mp4
+    - Glob wildcards: "*.mp4", "servo*.mp4"
+    - Extension filtering via the extensions parameter
+
+    Uses the system `find` command which is much faster than Python os.walk
+    on large directory trees.
     """
+    import shutil
+    import subprocess
+
+    if shutil.which("find"):
+        return _search_with_find(root, query, extensions, max_results, max_depth)
+    return _search_with_walk(root, query, extensions, max_results, max_depth)
+
+
+def _search_with_find(
+    root: str,
+    query: str,
+    extensions: list[str] | None,
+    max_results: int,
+    max_depth: int,
+) -> list[str]:
+    """Fast file search using system `find` command."""
+    import subprocess
+
+    # Build find command with pruning for hidden/noisy dirs
+    cmd = ["find", root, "-maxdepth", str(max_depth)]
+
+    # Prune hidden dirs and common noise — must come before the match
+    prune_names = [".*", "__pycache__", "node_modules", "site-packages"]
+    prune_parts: list[str] = []
+    for i, name in enumerate(prune_names):
+        if i > 0:
+            prune_parts.append("-o")
+        prune_parts.extend(["-name", name])
+    cmd.extend(["("] + prune_parts + [")", "-prune", "-o"])
+
+    # Build name match — support glob wildcards
+    has_wildcard = any(c in query for c in "*?[]")
+
+    if has_wildcard:
+        cmd.extend(["-type", "f", "-iname", query, "-print"])
+    elif extensions:
+        cmd.append("(")
+        for i, ext in enumerate(extensions):
+            if i > 0:
+                cmd.append("-o")
+            cmd.extend(["-type", "f", "-iname", f"*{query}*{ext}"])
+        cmd.extend([")", "-print"])
+    else:
+        cmd.extend(["-type", "f", "-iname", f"*{query}*", "-print"])
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        lines = [l for l in result.stdout.strip().split("\n") if l]
+        return lines[:max_results]
+    except (subprocess.TimeoutExpired, Exception):
+        return []
+
+
+def _search_with_walk(
+    root: str,
+    query: str,
+    extensions: list[str] | None,
+    max_results: int,
+    max_depth: int,
+) -> list[str]:
+    """Fallback file search using Python os.walk."""
+    from fnmatch import fnmatch
+
+    has_wildcard = any(c in query for c in "*?[]")
     query_lower = query.lower()
     results: list[str] = []
     root_depth = root.rstrip("/").count("/")
+    skip_dirs = {".git", "__pycache__", "node_modules", "site-packages", ".cache"}
 
     for dirpath, dirnames, filenames in os.walk(root):
-        # Depth check
         current_depth = dirpath.rstrip("/").count("/") - root_depth
         if current_depth >= max_depth:
             dirnames.clear()
             continue
 
-        # Prune noisy directories in-place
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in _SKIP_DIRS and not d.startswith(".")
-        ]
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs and not d.startswith(".")]
 
         for filename in filenames:
             if len(results) >= max_results:
                 return results
 
-            # Extension filter
-            if extensions:
-                suffix = Path(filename).suffix.lower()
-                if suffix not in extensions:
+            if has_wildcard:
+                if not fnmatch(filename.lower(), query.lower()):
+                    continue
+            else:
+                if extensions:
+                    suffix = Path(filename).suffix.lower()
+                    if suffix not in extensions:
+                        continue
+                if query_lower not in filename.lower():
                     continue
 
-            # Substring match on filename
-            if query_lower in filename.lower():
-                full_path = os.path.join(dirpath, filename)
-                results.append(full_path)
+            results.append(os.path.join(dirpath, filename))
 
     return results
 
@@ -181,7 +245,7 @@ class FilePickerScreen(ModalScreen[str]):
     def compose(self) -> ComposeResult:
         with Vertical(id="fp-dialog"):
             yield Input(
-                placeholder="Search files by name (type 2+ chars)...",
+                placeholder="Search: name, *.mp4, servo*.mp4 (2+ chars)...",
                 id="fp-search",
             )
             yield Input(

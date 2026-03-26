@@ -55,7 +55,8 @@ class TestFileSearch:
         sub.mkdir()
         (sub / "deep.py").touch()
 
-        results = _search_files(str(tmp_path), "py", extensions=[".py"])
+        # Use glob wildcard to find all .py files
+        results = _search_files(str(tmp_path), "*.py")
         filenames = [os.path.basename(r) for r in results]
         assert "foo.py" in filenames
         assert "bar.py" in filenames
@@ -100,6 +101,31 @@ class TestFileSearch:
         filenames = [os.path.basename(r) for r in results]
         assert "visible.txt" in filenames
         assert "secret.txt" not in filenames
+
+    def test_search_glob_wildcard(self, tmp_path):
+        from hftool.tui.widgets.file_browser import _search_files
+
+        (tmp_path / "video1.mp4").touch()
+        (tmp_path / "video2.mkv").touch()
+        (tmp_path / "notes.txt").touch()
+
+        results = _search_files(str(tmp_path), "*.mp4")
+        filenames = [os.path.basename(r) for r in results]
+        assert "video1.mp4" in filenames
+        assert "video2.mkv" not in filenames
+
+    def test_search_glob_prefix(self, tmp_path):
+        from hftool.tui.widgets.file_browser import _search_files
+
+        (tmp_path / "servo-1.mp4").touch()
+        (tmp_path / "servo-2.mp4").touch()
+        (tmp_path / "other.mp4").touch()
+
+        results = _search_files(str(tmp_path), "servo*")
+        filenames = [os.path.basename(r) for r in results]
+        assert "servo-1.mp4" in filenames
+        assert "servo-2.mp4" in filenames
+        assert "other.mp4" not in filenames
 
     def test_get_browse_root_native(self):
         from hftool.tui.widgets.file_browser import get_browse_root
