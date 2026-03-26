@@ -138,10 +138,10 @@ class ModelBrowserScreen(Screen):
                 size_gb=info.size_gb,
                 pip_dependencies=info.pip_dependencies if info.pip_dependencies else None,
             )
-            self.call_from_thread(self.notify, f"Downloaded {short_name}")
-            self.call_from_thread(self._load_all_models)
+            self.app.call_from_thread(self.notify, f"Downloaded {short_name}")
+            self.app.call_from_thread(self._load_all_models)
         except Exception as e:
-            self.call_from_thread(self.notify, f"Download failed: {e}", severity="error")
+            self.app.call_from_thread(self.notify, f"Download failed: {e}", severity="error")
 
     def action_delete(self) -> None:
         selected = self._get_selected_model()
@@ -159,12 +159,12 @@ class ModelBrowserScreen(Screen):
 
             info = get_model_info(task_name, short_name)
             if delete_model(info.repo_id):
-                self.call_from_thread(self.notify, f"Deleted {short_name}")
+                self.app.call_from_thread(self.notify, f"Deleted {short_name}")
             else:
-                self.call_from_thread(self.notify, f"Model not found on disk", severity="warning")
-            self.call_from_thread(self._load_all_models)
+                self.app.call_from_thread(self.notify, f"Model not found on disk", severity="warning")
+            self.app.call_from_thread(self._load_all_models)
         except Exception as e:
-            self.call_from_thread(self.notify, f"Delete failed: {e}", severity="error")
+            self.app.call_from_thread(self.notify, f"Delete failed: {e}", severity="error")
 
     def action_refresh(self) -> None:
         self._load_all_models()
