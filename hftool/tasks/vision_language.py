@@ -126,15 +126,6 @@ class VisionLanguageTask(BaseTask):
         else:
             image = Image.open(image_path).convert("RGB")
 
-            # Resize large images to prevent OOM — 4K frames produce 32K+ vision
-            # tokens which exceeds 24GB VRAM. 1280px longest edge is plenty for
-            # scene understanding and keeps token count manageable.
-            max_edge = 1280
-            if max(image.size) > max_edge:
-                ratio = max_edge / max(image.size)
-                new_size = (int(image.width * ratio), int(image.height * ratio))
-                image = image.resize(new_size, Image.LANCZOS)
-
             messages = [
                 system_msg,
                 {
@@ -147,7 +138,16 @@ class VisionLanguageTask(BaseTask):
             ]
 
             text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            inputs = processor(text=[text], images=[image], return_tensors="pt", padding=True)
+            # Let the processor handle resizing with constrained token budget.
+            # min_pixels/max_pixels control vision token count — max_pixels=802816
+            # gives ~3136 tokens (good for 24GB VRAM), vs 32K+ tokens unconstrained.
+            inputs = processor(
+                text=[text],
+                images=[image],
+                return_tensors="pt",
+                padding=True,
+                max_pixels=802816,  # ~896x896 effective resolution
+            )
             inputs = inputs.to(model_obj.device)
 
         max_new_tokens = kwargs.pop("max_new_tokens", 1024)
