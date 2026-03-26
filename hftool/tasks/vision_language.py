@@ -125,7 +125,17 @@ class VisionLanguageTask(BaseTask):
         max_new_tokens = kwargs.pop("max_new_tokens", 1024)
 
         with torch.no_grad():
-            output_ids = model_obj.generate(**inputs, max_new_tokens=max_new_tokens, **kwargs)
+            # Multimodal models pass extra keys (pixel_values, image_grid_thw,
+            # mm_token_type_ids) that are consumed by prepare_inputs_for_generation
+            # but not declared in forward(). Transformers 5.x validates strictly,
+            # so we temporarily disable the check for VLM inference.
+            original_validate = getattr(model_obj, '_validate_model_kwargs', None)
+            model_obj._validate_model_kwargs = lambda model_kwargs: None
+            try:
+                output_ids = model_obj.generate(**inputs, max_new_tokens=max_new_tokens, **kwargs)
+            finally:
+                if original_validate is not None:
+                    model_obj._validate_model_kwargs = original_validate
 
         generated_ids = output_ids[:, inputs["input_ids"].shape[1]:]
         response = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]

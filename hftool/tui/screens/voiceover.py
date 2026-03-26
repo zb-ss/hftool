@@ -465,7 +465,7 @@ class VoiceoverScreen(Screen):
             self.query_one("#stage-label", Label).update("[red]Failed[/red]")
             self._log(f"[red]Error: {error}[/red]")
             result_panel.update(f"[red]{error}[/red]")
-            result_panel.styles.border = ("round", "red 60%")
+            result_panel.add_class("-error")
             result_panel.border_title = "Error"
         else:
             self.query_one("#stage-label", Label).update("[green]Complete![/green]")

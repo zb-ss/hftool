@@ -125,7 +125,7 @@ class GenerationScreen(Screen):
             stage_label.update("[red]Failed[/red]")
             self._log(f"[red]Error: {result.error}[/red]")
             result_panel.update(f"[red]{result.error}[/red]")
-            result_panel.styles.border = ("round", "red 60%")
+            result_panel.add_class("-error")
             result_panel.border_title = "Error"
             result_panel.display = True
 

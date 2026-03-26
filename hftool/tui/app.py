@@ -99,6 +99,12 @@ class HFToolApp(App):
         min-height: 6;
     }
 
+    /* ── Error state ────────────────────────────────────────── */
+    .-error {
+        border: round $error;
+        border-title-color: $error;
+    }
+
     /* ── ProgressBar ────────────────────────────────────────── */
     ProgressBar {
         margin: 0 0 1 0;
