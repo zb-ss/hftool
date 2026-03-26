@@ -210,7 +210,7 @@ class FilePickerScreen(ModalScreen[str]):
             extensions=self._extensions,
             max_results=50,
         )
-        self.call_from_thread(self._display_results, results, query)
+        self.app.call_from_thread(self._display_results, results, query)
 
     def _display_results(self, results: list[str], query: str) -> None:
         """Update the search results list on the UI thread."""

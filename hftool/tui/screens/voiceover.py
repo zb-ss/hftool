@@ -285,7 +285,7 @@ class VoiceoverScreen(Screen):
             elif mode == "revoice":
                 self._run_revoice_with_edit(task, video_path, output_path)
             else:
-                self.call_from_thread(self._update_stage, "Running from script...")
+                self.app.call_from_thread(self._update_stage, "Running from script...")
                 task.run(
                     script_path=script_path,
                     output_path=output_path,
@@ -293,12 +293,12 @@ class VoiceoverScreen(Screen):
                 )
 
             if not self._cancel_event.is_set():
-                self.call_from_thread(self._on_voiceover_done, output_path, None)
+                self.app.call_from_thread(self._on_voiceover_done, output_path, None)
             else:
-                self.call_from_thread(self._on_voiceover_done, None, "Cancelled by user")
+                self.app.call_from_thread(self._on_voiceover_done, None, "Cancelled by user")
 
         except Exception as e:
-            self.call_from_thread(self._on_voiceover_done, None, str(e))
+            self.app.call_from_thread(self._on_voiceover_done, None, str(e))
         finally:
             try:
                 task.cleanup()
@@ -317,41 +317,41 @@ class VoiceoverScreen(Screen):
         os.makedirs(work_dir, exist_ok=True)
 
         # Step 1: Scene detection
-        self.call_from_thread(self._update_stage, "Step 1/6 — Detecting scenes...")
+        self.app.call_from_thread(self._update_stage, "Step 1/6 — Detecting scenes...")
         scenes = detect_scenes(video_path, threshold=task.scene_threshold)
-        self.call_from_thread(self._log, f"  Found {len(scenes.scenes)} scenes")
+        self.app.call_from_thread(self._log, f"  Found {len(scenes.scenes)} scenes")
 
         if self._cancel_event.is_set():
             return
 
         # Step 2: Keyframe extraction
-        self.call_from_thread(self._update_stage, "Step 2/6 — Extracting keyframes...")
+        self.app.call_from_thread(self._update_stage, "Step 2/6 — Extracting keyframes...")
         keyframe_dir = os.path.join(work_dir, "voiceover_keyframes")
         scenes = extract_keyframes(video_path, scenes, keyframe_dir)
         total_frames = sum(len(s.keyframe_paths) for s in scenes.scenes)
-        self.call_from_thread(self._log, f"  Extracted {total_frames} keyframes")
+        self.app.call_from_thread(self._log, f"  Extracted {total_frames} keyframes")
 
         if self._cancel_event.is_set():
             return
 
         # Step 3: VLM analysis
-        self.call_from_thread(self._update_stage, "Step 3/6 — Analyzing frames with VLM...")
+        self.app.call_from_thread(self._update_stage, "Step 3/6 — Analyzing frames with VLM...")
         task._load_vlm()
         analyses = analyze_frames(task._vlm_task, scenes)
-        self.call_from_thread(self._log, f"  Analyzed {len(analyses)} frames")
+        self.app.call_from_thread(self._log, f"  Analyzed {len(analyses)} frames")
 
         if self._cancel_event.is_set():
             task._unload_vlm()
             return
 
         # Step 4: Generate script
-        self.call_from_thread(self._update_stage, "Step 4/6 — Generating script...")
+        self.app.call_from_thread(self._update_stage, "Step 4/6 — Generating script...")
         script = generate_script(
             task._vlm_task, analyses, scenes,
             style=task.narration_style,
             video_duration_ms=scenes.video_duration_ms,
         )
-        self.call_from_thread(self._log, f"  Generated {len(script.segments)} segments")
+        self.app.call_from_thread(self._log, f"  Generated {len(script.segments)} segments")
 
         # Unload VLM before TTS
         task._unload_vlm()
@@ -360,7 +360,7 @@ class VoiceoverScreen(Screen):
             return
 
         # Step 5: Pause for script editing
-        self.call_from_thread(self._show_script_editor, script)
+        self.app.call_from_thread(self._show_script_editor, script)
         self._script_ready.wait()  # Block until user clicks Continue
 
         if self._cancel_event.is_set():
@@ -372,11 +372,11 @@ class VoiceoverScreen(Screen):
                 from hftool.io.script_parser import parse_script_json
                 script = parse_script_json(self._edited_script)
             except Exception as e:
-                self.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
+                self.app.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
 
         # Step 6: TTS + merge
-        self.call_from_thread(self._update_stage, "Step 6/6 — Generating voiceover audio...")
-        self.call_from_thread(self._hide_editor)
+        self.app.call_from_thread(self._update_stage, "Step 6/6 — Generating voiceover audio...")
+        self.app.call_from_thread(self._hide_editor)
         task._generate_and_merge(script, output_path, video_path, keep_audio=False)
 
     def _run_revoice_with_edit(self, task, video_path: str, output_path: str) -> None:
@@ -389,7 +389,7 @@ class VoiceoverScreen(Screen):
         os.makedirs(work_dir, exist_ok=True)
 
         # Step 1: Extract audio
-        self.call_from_thread(self._update_stage, "Step 1/4 — Extracting audio...")
+        self.app.call_from_thread(self._update_stage, "Step 1/4 — Extracting audio...")
         audio_path = os.path.join(work_dir, "extracted_audio.wav")
         task._extract_audio(video_path, audio_path)
 
@@ -397,15 +397,15 @@ class VoiceoverScreen(Screen):
             return
 
         # Step 2: ASR transcription
-        self.call_from_thread(self._update_stage, "Step 2/4 — Transcribing audio...")
+        self.app.call_from_thread(self._update_stage, "Step 2/4 — Transcribing audio...")
         script = task._transcribe(audio_path)
-        self.call_from_thread(self._log, f"  Transcribed {len(script.segments)} segments")
+        self.app.call_from_thread(self._log, f"  Transcribed {len(script.segments)} segments")
 
         if self._cancel_event.is_set():
             return
 
         # Step 3: Pause for editing
-        self.call_from_thread(self._show_script_editor, script)
+        self.app.call_from_thread(self._show_script_editor, script)
         self._script_ready.wait()
 
         if self._cancel_event.is_set():
@@ -416,11 +416,11 @@ class VoiceoverScreen(Screen):
                 from hftool.io.script_parser import parse_script_json
                 script = parse_script_json(self._edited_script)
             except Exception as e:
-                self.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
+                self.app.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
 
         # Step 4: TTS + merge
-        self.call_from_thread(self._update_stage, "Step 4/4 — Generating voiceover audio...")
-        self.call_from_thread(self._hide_editor)
+        self.app.call_from_thread(self._update_stage, "Step 4/4 — Generating voiceover audio...")
+        self.app.call_from_thread(self._hide_editor)
         task._generate_and_merge(script, output_path, video_path, keep_audio=False)
 
     # --- UI update methods (called on UI thread via call_from_thread) ---

@@ -72,8 +72,12 @@ class GenerationScreen(Screen):
         self.query_one("#result-panel").border_title = "Result"
         self._start_task()
 
+    def _post_from_thread(self, message) -> None:
+        """Post a Textual message from a worker thread safely."""
+        self.app.call_from_thread(self.post_message, message)
+
     def _start_task(self) -> None:
-        self._runner = TaskRunner(self._request, post_message=self.call_from_thread)
+        self._runner = TaskRunner(self._request, post_message=self._post_from_thread)
         self._running = True
         self._log("Starting task...")
         self._run_worker()
@@ -81,7 +85,7 @@ class GenerationScreen(Screen):
     @work(thread=True)
     def _run_worker(self) -> None:
         result = self._runner.execute()
-        self.call_from_thread(self._on_task_done, result)
+        self.app.call_from_thread(self._on_task_done, result)
 
     def _on_task_done(self, result: TaskResult) -> None:
         self._running = False
