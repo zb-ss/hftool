@@ -318,6 +318,7 @@ class VoiceoverScreen(Screen):
 
         # Step 1: Scene detection
         self.app.call_from_thread(self._update_stage, "Step 1/6 — Detecting scenes...")
+        self.app.call_from_thread(self._set_progress_indeterminate)
         scenes = detect_scenes(video_path, threshold=task.scene_threshold)
         self.app.call_from_thread(self._log, f"  Found {len(scenes.scenes)} scenes")
 
@@ -334,10 +335,42 @@ class VoiceoverScreen(Screen):
         if self._cancel_event.is_set():
             return
 
-        # Step 3: VLM analysis
-        self.app.call_from_thread(self._update_stage, "Step 3/6 — Analyzing frames with VLM...")
+        # Step 3: VLM analysis (per-frame progress)
+        total_frames = sum(len(s.keyframe_paths) for s in scenes.scenes)
+        self.app.call_from_thread(self._update_stage, f"Step 3/6 — Analyzing frames with VLM (0/{total_frames})...")
+        self.app.call_from_thread(self._update_progress, 0, total_frames)
         task._load_vlm()
-        analyses = analyze_frames(task._vlm_task, scenes)
+
+        # Inline the frame analysis loop for per-frame progress
+        from hftool.io.script_generator import FrameAnalysis, FRAME_ANALYSIS_PROMPT
+        analyses = []
+        prev_description = ""
+        frame_idx = 0
+        for scene in scenes.scenes:
+            for image_path in scene.keyframe_paths:
+                if self._cancel_event.is_set():
+                    task._unload_vlm()
+                    return
+                prompt = FRAME_ANALYSIS_PROMPT.format(
+                    previous_description=prev_description or "None yet."
+                )
+                description = task._vlm_task.analyze_frame(
+                    image_path, prompt, previous_context=prev_description,
+                )
+                analyses.append(FrameAnalysis(
+                    scene_index=scene.index,
+                    timestamp_ms=scene.start_ms,
+                    image_path=image_path,
+                    description=description,
+                ))
+                prev_description = description
+                frame_idx += 1
+                self.app.call_from_thread(
+                    self._update_stage,
+                    f"Step 3/6 — Analyzing frames with VLM ({frame_idx}/{total_frames})...",
+                )
+                self.app.call_from_thread(self._update_progress, frame_idx, total_frames)
+
         self.app.call_from_thread(self._log, f"  Analyzed {len(analyses)} frames")
 
         if self._cancel_event.is_set():
@@ -377,6 +410,7 @@ class VoiceoverScreen(Screen):
         # Step 6: TTS + merge
         self.app.call_from_thread(self._update_stage, "Step 6/6 — Generating voiceover audio...")
         self.app.call_from_thread(self._hide_editor)
+        self.app.call_from_thread(self._set_progress_indeterminate)
         task._generate_and_merge(script, output_path, video_path, keep_audio=False)
 
     def _run_revoice_with_edit(self, task, video_path: str, output_path: str) -> None:
@@ -427,6 +461,12 @@ class VoiceoverScreen(Screen):
 
     def _update_stage(self, text: str) -> None:
         self.query_one("#stage-label", Label).update(f"[bold]{text}[/bold]")
+
+    def _update_progress(self, current: int, total: int) -> None:
+        self.query_one("#progress", ProgressBar).update(total=total, progress=current)
+
+    def _set_progress_indeterminate(self) -> None:
+        self.query_one("#progress", ProgressBar).update(total=None)
 
     def _show_script_editor(self, script) -> None:
         """Show the inline script editor with the generated script."""
