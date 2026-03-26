@@ -297,6 +297,9 @@ class VoiceoverScreen(Screen):
             else:
                 self.app.call_from_thread(self._on_voiceover_done, None, "Cancelled by user")
 
+        except SystemExit as e:
+            # spacy.cli.download calls sys.exit on failure — catch it
+            self.app.call_from_thread(self._on_voiceover_done, None, f"A dependency failed to install (exit code {e.code}). Try rebuilding the Docker image.")
         except Exception as e:
             self.app.call_from_thread(self._on_voiceover_done, None, str(e))
         finally:
@@ -461,7 +464,7 @@ class VoiceoverScreen(Screen):
 
         # Step 2: ASR transcription
         self.app.call_from_thread(self._update_stage, "Step 2/4 — Transcribing audio...")
-        script = task._transcribe(audio_path)
+        script = task._transcribe_to_script(audio_path)
         self.app.call_from_thread(self._log, f"  Transcribed {len(script.segments)} segments")
 
         if self._cancel_event.is_set():

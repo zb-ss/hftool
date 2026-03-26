@@ -79,7 +79,12 @@ RUN pip install --no-cache-dir \
     "scenedetect[opencv]>=0.6.0" \
     "opencv-python-headless>=4.5.0" \
     "pysrt>=1.1.0" \
+    "kokoro>=0.8.0" \
     "textual>=7.0.0"
+
+# Kokoro TTS requires spacy en_core_web_sm model (spacy.cli.download calls
+# sys.exit which crashes worker threads, so pre-install it here)
+RUN pip install --no-cache-dir spacy && python -m spacy download en_core_web_sm
 
 # Install diffusers from main branch for LTX-2 support (requires 0.37.0+)
 # Once diffusers 0.37.0 is released, replace with: "diffusers>=0.37.0"
