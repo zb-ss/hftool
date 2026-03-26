@@ -625,7 +625,7 @@ def get_docker_run_command(
     # Mount user's home directory for file browsing in interactive mode
     # This allows the file picker to access files outside the working directory
     if mount_home:
-        cmd.extend(["-v", f"{user_home}:/home/host:ro"])  # Read-only for safety
+        cmd.extend(["-v", f"{user_home}:/home/host"])
         cmd.extend(["-e", f"HFTOOL_HOST_HOME=/home/host"])
         cmd.extend(["-e", f"HFTOOL_REAL_HOME={user_home}"])
 

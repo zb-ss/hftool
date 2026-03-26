@@ -6,6 +6,8 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static, TextArea
 
+from hftool.tui.widgets.file_browser import FilePickerScreen
+
 from hftool.tui.widgets.model_table import ModelTable
 
 
@@ -71,6 +73,16 @@ class TaskScreen(Screen):
         width: 1fr;
         margin: 0 1 0 0;
     }
+    .file-row {
+        height: auto;
+    }
+    .file-row > Input {
+        width: 1fr;
+    }
+    .file-row > Button {
+        width: 12;
+        margin: 0 0 0 1;
+    }
     #generate-btn {
         dock: bottom;
         width: 100%;
@@ -94,7 +106,9 @@ class TaskScreen(Screen):
                 yield TextArea(id="prompt-input")
 
             with Vertical(id="params-section"):
-                yield Input(placeholder="Output path (auto if empty)", id="output-path")
+                with Horizontal(classes="file-row"):
+                    yield Input(placeholder="Output path (auto if empty)", id="output-path")
+                    yield Button("Browse", id="browse-output")
                 with Horizontal(id="params-row"):
                     yield Input(placeholder="Seed", id="param-seed")
                     yield Input(placeholder="Device", id="param-device", value="auto")
@@ -111,6 +125,11 @@ class TaskScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "generate-btn":
             self._launch_generation()
+        elif event.button.id == "browse-output":
+            def on_selected(path: str) -> None:
+                if path:
+                    self.query_one("#output-path", Input).value = path
+            self.app.push_screen(FilePickerScreen(title="Select Output Location"), on_selected)
 
     def action_generate(self) -> None:
         self._launch_generation()

@@ -33,10 +33,10 @@ class TestTUIImports:
     def test_import_widgets(self):
         from hftool.tui.widgets.system_info import SystemInfo
         from hftool.tui.widgets.model_table import ModelTable
-        from hftool.tui.widgets.file_browser import FileBrowser
+        from hftool.tui.widgets.file_browser import FilePickerScreen
         assert SystemInfo is not None
         assert ModelTable is not None
-        assert FileBrowser is not None
+        assert FilePickerScreen is not None
 
 
 class TestTUIBridge:
