@@ -289,6 +289,15 @@ def check_dependency_satisfied(dep: str) -> bool:
         return False
 
 
+def _clear_dependency_cache():
+    """Clear the dependency check cache after installing new packages."""
+    try:
+        from hftool.utils.deps import _DEPENDENCY_CACHE
+        _DEPENDENCY_CACHE.clear()
+    except (ImportError, AttributeError):
+        pass
+
+
 def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, force: bool = False) -> bool:
     """Install or upgrade pip dependencies for a model.
     
@@ -338,6 +347,7 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, for
                         click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
                     else:
                         click.echo(f"    Installed {dep}")
+                _clear_dependency_cache()
                 return True
         except Exception as e:
             click.echo(f"  pipx injection failed: {e}, falling back to pip", err=True)
@@ -355,6 +365,8 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, for
                 click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
             else:
                 click.echo(f"    Installed {dep}")
+        # Clear dependency cache so check_dependency re-checks after install
+        _clear_dependency_cache()
         return True
     except Exception as e:
         click.echo(f"  pip installation failed: {e}", err=True)

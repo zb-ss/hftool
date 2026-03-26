@@ -421,8 +421,18 @@ class VoiceoverScreen(Screen):
         # Parse edited script
         if self._edited_script:
             try:
-                from hftool.io.script_parser import parse_script_json
-                script = parse_script_json(self._edited_script)
+                import json as _json
+                from hftool.io.script_parser import ScriptData, ScriptSegment
+                raw = _json.loads(self._edited_script)
+                script = ScriptData(segments=[
+                    ScriptSegment(
+                        id=i + 1,
+                        start_ms=int(s.get("start_ms", 0)),
+                        end_ms=int(s.get("end_ms", 0)),
+                        text=s.get("text", ""),
+                    )
+                    for i, s in enumerate(raw)
+                ])
             except Exception as e:
                 self.app.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
 
@@ -466,8 +476,18 @@ class VoiceoverScreen(Screen):
 
         if self._edited_script:
             try:
-                from hftool.io.script_parser import parse_script_json
-                script = parse_script_json(self._edited_script)
+                import json as _json
+                from hftool.io.script_parser import ScriptData, ScriptSegment
+                raw = _json.loads(self._edited_script)
+                script = ScriptData(segments=[
+                    ScriptSegment(
+                        id=i + 1,
+                        start_ms=int(s.get("start_ms", 0)),
+                        end_ms=int(s.get("end_ms", 0)),
+                        text=s.get("text", ""),
+                    )
+                    for i, s in enumerate(raw)
+                ])
             except Exception as e:
                 self.app.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
 
