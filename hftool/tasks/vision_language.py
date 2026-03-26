@@ -106,13 +106,14 @@ class VisionLanguageTask(BaseTask):
 
         load_kwargs.update(kwargs)
 
-        model_obj = AutoVLM.from_pretrained(model, **load_kwargs)
+        # Apply ROCm workaround BEFORE loading — torch.repeat_interleave
+        # crashes with CUDA tensors on ROCm HIP (hipErrorIllegalState)
+        if device in ("cuda", "rocm"):
+            is_rocm = getattr(torch.version, "hip", None) is not None
+            if is_rocm:
+                _patch_qwen_vl_for_rocm(None)
 
-        # Workaround: torch.repeat_interleave is broken on ROCm HIP
-        # (hipErrorIllegalState). Monkey-patch the vision encoder to run
-        # the cu_seqlens computation on CPU then move back to GPU.
-        if device in ("cuda", "rocm") and hasattr(model_obj, "visual"):
-            _patch_qwen_vl_for_rocm(model_obj)
+        model_obj = AutoVLM.from_pretrained(model, **load_kwargs)
         processor = AutoProcessor.from_pretrained(model)
 
         self._model = model_obj
@@ -178,14 +179,16 @@ class VisionLanguageTask(BaseTask):
 
             text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             # Let the processor handle resizing with constrained token budget.
-            # min_pixels/max_pixels control vision token count — max_pixels=802816
-            # gives ~3136 tokens (good for 24GB VRAM), vs 32K+ tokens unconstrained.
+            # max_pixels controls vision token count and VRAM during attention.
+            # 262144 (~512x512) keeps attention under 24GB VRAM. Higher values
+            # cause OOM in the vision encoder's scaled_dot_product_attention.
             inputs = processor(
                 text=[text],
                 images=[image],
                 return_tensors="pt",
                 padding=True,
-                max_pixels=802816,  # ~896x896 effective resolution
+                min_pixels=28 * 28,
+                max_pixels=262144,
             )
             inputs = inputs.to(model_obj.device)
 
