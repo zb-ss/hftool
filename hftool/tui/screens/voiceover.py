@@ -381,6 +381,17 @@ class VoiceoverScreen(Screen):
 
         self.app.call_from_thread(self._log, f"  Analyzed {len(analyses)} frames")
 
+        # Aggressively free VRAM before script generation — the frame analysis
+        # loop accumulates KV cache fragments that prevent the large allocation
+        # needed for the script assembly prompt (all 48 descriptions at once)
+        try:
+            import torch, gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
         if self._cancel_event.is_set():
             task._unload_vlm()
             return

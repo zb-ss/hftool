@@ -196,9 +196,11 @@ def generate_script(
 
     print(f"  Generating narration script (style: {style}, duration: {duration_s:.1f}s)...")
 
+    # Text-only call — script assembly uses frame descriptions, no image needed.
+    # This saves ~3GB VRAM vs sending an image with the prompt.
     response = vlm_task.run_inference(
         vlm_task._pipeline,
-        {"image_path": analyses[0].image_path, "prompt": prompt},
+        {"prompt": prompt},
     )
 
     # run_inference returns a dict; extract the text response

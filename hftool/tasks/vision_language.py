@@ -105,32 +105,42 @@ class VisionLanguageTask(BaseTask):
         model_obj = pipeline["model"]
         processor = pipeline["processor"]
 
-        image = Image.open(input_data["image_path"]).convert("RGB")
-
-        # Resize large images to prevent OOM — 4K frames produce 32K+ vision
-        # tokens which exceeds 24GB VRAM. 1280px longest edge is plenty for
-        # scene understanding and keeps token count manageable.
-        max_edge = 1280
-        if max(image.size) > max_edge:
-            ratio = max_edge / max(image.size)
-            new_size = (int(image.width * ratio), int(image.height * ratio))
-            image = image.resize(new_size, Image.LANCZOS)
-
         prompt = input_data["prompt"]
+        image_path = input_data.get("image_path")
 
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ]
+        # Text-only mode (no image) — used for script assembly prompts
+        if not image_path:
+            messages = [
+                {"role": "user", "content": [{"type": "text", "text": prompt}]}
+            ]
+            text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            inputs = processor(text=[text], return_tensors="pt", padding=True)
+            inputs = inputs.to(model_obj.device)
+        else:
+            image = Image.open(image_path).convert("RGB")
 
-        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = processor(text=[text], images=[image], return_tensors="pt", padding=True)
-        inputs = inputs.to(model_obj.device)
+            # Resize large images to prevent OOM — 4K frames produce 32K+ vision
+            # tokens which exceeds 24GB VRAM. 1280px longest edge is plenty for
+            # scene understanding and keeps token count manageable.
+            max_edge = 1280
+            if max(image.size) > max_edge:
+                ratio = max_edge / max(image.size)
+                new_size = (int(image.width * ratio), int(image.height * ratio))
+                image = image.resize(new_size, Image.LANCZOS)
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ]
+
+            text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            inputs = processor(text=[text], images=[image], return_tensors="pt", padding=True)
+            inputs = inputs.to(model_obj.device)
 
         max_new_tokens = kwargs.pop("max_new_tokens", 1024)
 
