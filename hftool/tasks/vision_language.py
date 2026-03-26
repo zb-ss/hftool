@@ -160,6 +160,11 @@ class VisionLanguageTask(BaseTask):
         generated_ids = output_ids[:, inputs["input_ids"].shape[1]:]
         response = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
+        # Strip Qwen 3.5 thinking blocks — the model wraps its reasoning in
+        # <think>...</think> tags which aren't special tokens and leak through
+        import re
+        response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
+
         return {"text": response.strip()}
 
     def analyze_frame(

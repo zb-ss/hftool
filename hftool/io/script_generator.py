@@ -20,41 +20,33 @@ from hftool.io.script_parser import ScriptData, ScriptSegment
 # Prompt templates
 # ---------------------------------------------------------------------------
 
-FRAME_ANALYSIS_PROMPT = """Analyze this video frame in detail. Describe:
-1. What is visible on screen (UI elements, text, actions)
-2. What has changed compared to the previous frame
-3. Any text visible on screen (read it verbatim)
+FRAME_ANALYSIS_PROMPT = """Describe this video frame for a narrator. Write 2-3 sentences covering:
+- What is shown on screen (UI, text, visuals)
+- What action or step is happening
 
-Previous frame description: {previous_description}
+Previous frame context: {previous_description}
 
-If this is the first frame, ignore the previous description.
-Be concise but thorough. Focus on what a narrator would need to describe."""
+Reply with ONLY the description, no analysis headers or bullet points."""
 
-SCRIPT_ASSEMBLY_PROMPT = """You are creating a narration script for a video. Based on these frame descriptions, \
-generate a timed narration script in JSON format.
+SCRIPT_ASSEMBLY_PROMPT = """Write a voiceover narration script for a video as a JSON array.
 
-Video duration: {duration_s:.1f} seconds
-Narration style: {style}
-{style_instructions}
+Video length: {duration_s:.1f} seconds
+Style: {style} — {style_instructions}
 
-Frame descriptions:
+What happens in the video:
 {frame_descriptions}
 
-Generate a JSON array of narration segments. Each segment should have:
-- "id": sequential number starting from 1
-- "start": timestamp in "HH:MM:SS.mmm" format
-- "end": timestamp in "HH:MM:SS.mmm" format  
-- "text": the narration text for this segment
+Output format — a JSON array, nothing else:
+[
+  {{"id": 1, "start": "00:00:00.000", "end": "00:00:08.000", "text": "Your narration here..."}},
+  {{"id": 2, "start": "00:00:08.500", "end": "00:00:15.000", "text": "Next segment..."}}
+]
 
-Rules:
-- Cover the entire video duration
-- Leave brief pauses between segments (0.5-1s)
-- Each segment should be 5-15 seconds long
-- Text should be natural spoken language
-- Do not describe UI elements literally; explain what the user is doing
-- Match the specified narration style
-
-Return ONLY the JSON array, no other text."""
+Requirements:
+- Each segment: 5-15 seconds, natural spoken language
+- Cover the full video duration with 0.5s pauses between segments
+- Describe what the USER is doing, not UI elements
+- Output ONLY the JSON array"""
 
 # ---------------------------------------------------------------------------
 # Narration styles
