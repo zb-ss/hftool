@@ -86,7 +86,6 @@ class VisionLanguageTask(BaseTask):
         device = self.device if self.device != "auto" else detect_device()
 
         if self.dtype:
-            import torch
             dtype_map = {
                 "bfloat16": torch.bfloat16,
                 "float16": torch.float16,
@@ -139,7 +138,6 @@ class VisionLanguageTask(BaseTask):
         Returns:
             Dict with "text" key containing the model response
         """
-        import torch
         from PIL import Image
 
         model_obj = pipeline["model"]
