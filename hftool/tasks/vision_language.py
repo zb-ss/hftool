@@ -106,6 +106,16 @@ class VisionLanguageTask(BaseTask):
         processor = pipeline["processor"]
 
         image = Image.open(input_data["image_path"]).convert("RGB")
+
+        # Resize large images to prevent OOM — 4K frames produce 32K+ vision
+        # tokens which exceeds 24GB VRAM. 1280px longest edge is plenty for
+        # scene understanding and keeps token count manageable.
+        max_edge = 1280
+        if max(image.size) > max_edge:
+            ratio = max_edge / max(image.size)
+            new_size = (int(image.width * ratio), int(image.height * ratio))
+            image = image.resize(new_size, Image.LANCZOS)
+
         prompt = input_data["prompt"]
 
         messages = [

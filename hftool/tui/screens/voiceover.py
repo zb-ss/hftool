@@ -371,6 +371,14 @@ class VoiceoverScreen(Screen):
                 )
                 self.app.call_from_thread(self._update_progress, frame_idx, total_frames)
 
+                # Free VRAM between frames — KV cache accumulates
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception:
+                    pass
+
         self.app.call_from_thread(self._log, f"  Analyzed {len(analyses)} frames")
 
         if self._cancel_event.is_set():
