@@ -270,7 +270,13 @@ class VoiceoverScreen(Screen):
         device: str,
     ) -> None:
         """Run the voiceover pipeline in a background thread."""
+        import sys, io
         from hftool.tasks.voiceover import VoiceoverTask
+
+        # Capture stderr to prevent HIP/MIOpen warnings from spilling
+        # onto the terminal behind the TUI
+        _original_stderr = sys.stderr
+        sys.stderr = io.StringIO()
 
         try:
             task = VoiceoverTask(
@@ -303,6 +309,14 @@ class VoiceoverScreen(Screen):
         except Exception as e:
             self.app.call_from_thread(self._on_voiceover_done, None, str(e))
         finally:
+            # Restore stderr and log any captured warnings
+            captured = sys.stderr.getvalue() if hasattr(sys.stderr, 'getvalue') else ""
+            sys.stderr = _original_stderr
+            if captured.strip():
+                # Show non-empty warnings in the log
+                for line in captured.strip().split("\n")[:5]:  # max 5 lines
+                    self.app.call_from_thread(self._log, f"[dim]{line}[/dim]")
+
             try:
                 task.cleanup()
             except Exception:

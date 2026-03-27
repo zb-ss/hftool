@@ -108,6 +108,10 @@ if "PYTORCH_HIP_ALLOC_CONF" not in os.environ:
 if "PYTORCH_CUDA_ALLOC_CONF" not in os.environ:
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
+# Suppress noisy MIOpen warnings that spill onto the terminal
+# (e.g., "MIOpen(HIP): Warning [IsEnoughWorkspace] Solver <GemmFwdRest>...")
+os.environ.setdefault("MIOPEN_LOG_LEVEL", "4")  # 4 = errors only
+
 # =============================================================================
 # GPU Selection Re-exec
 # =============================================================================
