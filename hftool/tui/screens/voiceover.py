@@ -66,10 +66,35 @@ class VoiceoverScreen(Screen):
     }
     #options-row {
         height: auto;
+        margin: 0 0 1 0;
     }
     #options-row > * {
         width: 1fr;
         margin: 0 1 0 0;
+    }
+    #voice-row {
+        height: auto;
+        margin: 0 0 1 0;
+    }
+    #voice-row > Select {
+        width: 1fr;
+    }
+    #voice-ref-row {
+        height: auto;
+        margin: 0 0 1 0;
+    }
+    #voice-ref-row > Input {
+        width: 1fr;
+    }
+    #voice-ref-row > Button {
+        width: 12;
+        margin: 0 0 0 1;
+    }
+    #capture-row {
+        height: auto;
+    }
+    #capture-row > Select {
+        width: 1fr;
     }
     #start-btn {
         margin: 1 0;
@@ -167,24 +192,19 @@ class VoiceoverScreen(Screen):
                     )
                     yield Input(placeholder="Device (auto)", value="auto", id="device-input")
 
-                # Voice selection
-                yield Label("Voice:", classes="field-label")
                 with Horizontal(id="voice-row"):
                     yield Select(
                         [
-                            # Female American
                             ("af_heart (Female, warm)", "af_heart"),
                             ("af_bella (Female, clear)", "af_bella"),
                             ("af_nicole (Female, soft)", "af_nicole"),
                             ("af_nova (Female, bright)", "af_nova"),
                             ("af_sarah (Female, natural)", "af_sarah"),
                             ("af_sky (Female, airy)", "af_sky"),
-                            # Male American
                             ("am_adam (Male, deep)", "am_adam"),
                             ("am_michael (Male, warm)", "am_michael"),
                             ("am_eric (Male, clear)", "am_eric"),
                             ("am_liam (Male, young)", "am_liam"),
-                            # British
                             ("bf_emma (Female, British)", "bf_emma"),
                             ("bf_lily (Female, British)", "bf_lily"),
                             ("bm_george (Male, British)", "bm_george"),
@@ -193,23 +213,25 @@ class VoiceoverScreen(Screen):
                         value="af_heart",
                         id="voice-select",
                     )
-                    yield Input(placeholder="Voice clone ref audio (Chatterbox only)", id="voice-ref-input")
+
+                # Voice cloning (Chatterbox only — hidden by default)
+                with Horizontal(id="voice-ref-row"):
+                    yield Input(placeholder="Voice clone ref audio (.wav)", id="voice-ref-input")
                     yield Button("Browse", id="browse-voice-ref")
 
-                # Scene detection interval
-                yield Label("Keyframe capture:", classes="field-label")
-                yield Select(
-                    [
-                        ("Auto (scene detection)", "auto"),
-                        ("Every 3 seconds", "3"),
-                        ("Every 5 seconds", "5"),
-                        ("Every 10 seconds", "10"),
-                        ("Every 15 seconds", "15"),
-                        ("Every 30 seconds", "30"),
-                    ],
-                    value="auto",
-                    id="capture-interval-select",
-                )
+                with Horizontal(id="capture-row"):
+                    yield Select(
+                        [
+                            ("Auto (scene detection)", "auto"),
+                            ("Every 3 seconds", "3"),
+                            ("Every 5 seconds", "5"),
+                            ("Every 10 seconds", "10"),
+                            ("Every 15 seconds", "15"),
+                            ("Every 30 seconds", "30"),
+                        ],
+                        value="auto",
+                        id="capture-interval-select",
+                    )
 
             yield Button("Start Voiceover", variant="success", id="start-btn")
 
@@ -233,12 +255,25 @@ class VoiceoverScreen(Screen):
         self.query_one("#mode-section").border_title = "Mode"
         self.query_one("#files-section").border_title = "Files"
         self.query_one("#options-section").border_title = "Options"
+        self.query_one("#voice-ref-row").display = False  # Only for Chatterbox
         self.query_one("#progress-section").border_title = "Progress"
         self.query_one("#progress-section").display = False
         self.query_one("#editor-section").border_title = "Edit Script"
         self.query_one("#editor-section").display = False
         self.query_one("#result-panel").display = False
         self.query_one("#result-panel").border_title = "Result"
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Show/hide voice cloning row based on TTS model selection."""
+        try:
+            control_id = event.control.id
+        except AttributeError:
+            return
+        if control_id == "tts-model-select":
+            is_chatterbox = event.value == "chatterbox"
+            self.query_one("#voice-ref-row").display = is_chatterbox
+            # Hide voice presets for chatterbox (uses cloned voice)
+            self.query_one("#voice-row").display = not is_chatterbox
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start-btn":
