@@ -476,7 +476,7 @@ class VoiceoverScreen(Screen):
         task._load_vlm()
 
         # Inline the frame analysis loop for per-frame progress
-        from hftool.io.script_generator import FrameAnalysis, FRAME_ANALYSIS_PROMPT
+        from hftool.io.script_generator import FrameAnalysis, FRAME_ANALYSIS_PROMPT, generate_script
         analyses = []
         prev_description = ""
         frame_idx = 0
