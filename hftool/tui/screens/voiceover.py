@@ -554,6 +554,7 @@ class VoiceoverScreen(Screen):
 
         # Parse edited script
         if self._edited_script:
+            self.app.call_from_thread(self._log, f"  Applying edited script ({len(self._edited_script)} chars)...")
             try:
                 import json as _json
                 from hftool.io.script_parser import ScriptData, ScriptSegment
@@ -567,13 +568,17 @@ class VoiceoverScreen(Screen):
                     )
                     for i, s in enumerate(raw)
                 ])
+                self.app.call_from_thread(self._log, f"  Parsed {len(script.segments)} edited segments")
             except Exception as e:
                 self.app.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
+        else:
+            self.app.call_from_thread(self._log, "  [dim]No edits detected, using generated script[/dim]")
 
         # Step 6: TTS + merge
         self.app.call_from_thread(self._update_stage, "Step 6/6 — Generating voiceover audio...")
         self.app.call_from_thread(self._hide_editor)
         self.app.call_from_thread(self._set_progress_indeterminate)
+        self.app.call_from_thread(self._log, f"  Voice: {task.voice}, TTS: {task.tts_model}, Segments: {len(script.segments)}")
         task._generate_and_merge(script, output_path, video_path, keep_audio=False)
 
     def _run_revoice_with_edit(self, task, video_path: str, output_path: str) -> None:
