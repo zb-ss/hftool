@@ -167,6 +167,50 @@ class VoiceoverScreen(Screen):
                     )
                     yield Input(placeholder="Device (auto)", value="auto", id="device-input")
 
+                # Voice selection
+                yield Label("Voice:", classes="field-label")
+                with Horizontal(id="voice-row"):
+                    yield Select(
+                        [
+                            # Female American
+                            ("af_heart (Female, warm)", "af_heart"),
+                            ("af_bella (Female, clear)", "af_bella"),
+                            ("af_nicole (Female, soft)", "af_nicole"),
+                            ("af_nova (Female, bright)", "af_nova"),
+                            ("af_sarah (Female, natural)", "af_sarah"),
+                            ("af_sky (Female, airy)", "af_sky"),
+                            # Male American
+                            ("am_adam (Male, deep)", "am_adam"),
+                            ("am_michael (Male, warm)", "am_michael"),
+                            ("am_eric (Male, clear)", "am_eric"),
+                            ("am_liam (Male, young)", "am_liam"),
+                            # British
+                            ("bf_emma (Female, British)", "bf_emma"),
+                            ("bf_lily (Female, British)", "bf_lily"),
+                            ("bm_george (Male, British)", "bm_george"),
+                            ("bm_daniel (Male, British)", "bm_daniel"),
+                        ],
+                        value="af_heart",
+                        id="voice-select",
+                    )
+                    yield Input(placeholder="Voice clone ref audio (Chatterbox only)", id="voice-ref-input")
+                    yield Button("Browse", id="browse-voice-ref")
+
+                # Scene detection interval
+                yield Label("Keyframe capture:", classes="field-label")
+                yield Select(
+                    [
+                        ("Auto (scene detection)", "auto"),
+                        ("Every 3 seconds", "3"),
+                        ("Every 5 seconds", "5"),
+                        ("Every 10 seconds", "10"),
+                        ("Every 15 seconds", "15"),
+                        ("Every 30 seconds", "30"),
+                    ],
+                    value="auto",
+                    id="capture-interval-select",
+                )
+
             yield Button("Start Voiceover", variant="success", id="start-btn")
 
             # Progress section (shown during execution)
@@ -210,6 +254,8 @@ class VoiceoverScreen(Screen):
             self._browse_file("script-input", "Select Script", [".srt", ".json"])
         elif event.button.id == "browse-output":
             self._browse_file("output-input", "Select Output Location", [".mp4", ".wav"])
+        elif event.button.id == "browse-voice-ref":
+            self._browse_file("voice-ref-input", "Select Voice Reference Audio", [".wav", ".mp3", ".flac", ".ogg"])
 
     def _browse_file(self, input_id: str, title: str, extensions: list[str]) -> None:
         """Open the file picker modal and populate the input on selection."""
@@ -236,6 +282,9 @@ class VoiceoverScreen(Screen):
         tts_model = self.query_one("#tts-model-select", Select).value
         style = self.query_one("#style-select", Select).value
         device = self.query_one("#device-input", Input).value.strip() or "auto"
+        voice = self.query_one("#voice-select", Select).value
+        voice_ref = self.query_one("#voice-ref-input", Input).value.strip()
+        capture_interval = self.query_one("#capture-interval-select", Select).value
 
         if mode in ("auto", "revoice") and not video_path:
             self.notify("Video path is required", severity="error")
@@ -265,7 +314,7 @@ class VoiceoverScreen(Screen):
 
         self._run_voiceover_worker(
             mode, video_path, script_path, output_path,
-            tts_model, style, device,
+            tts_model, style, device, voice, voice_ref, capture_interval,
         )
 
     @work(thread=True)
@@ -278,6 +327,9 @@ class VoiceoverScreen(Screen):
         tts_model: str,
         style: str,
         device: str,
+        voice: str = "af_heart",
+        voice_ref: str = "",
+        capture_interval: str = "auto",
     ) -> None:
         """Run the voiceover pipeline in a background thread."""
         import sys, io
@@ -292,9 +344,15 @@ class VoiceoverScreen(Screen):
             task = VoiceoverTask(
                 device=device,
                 tts_model=tts_model,
+                voice=voice,
+                voice_ref=voice_ref or None,
                 narration_style=style,
                 no_edit=True,  # We handle editing in the TUI
             )
+
+            # Store voice and capture interval for the auto flow
+            self._voice = voice
+            self._capture_interval = capture_interval
 
             if mode == "auto":
                 self._run_auto_with_edit(task, video_path, output_path)
@@ -336,17 +394,31 @@ class VoiceoverScreen(Screen):
         """Run auto voiceover with TUI script editing pause."""
         from hftool.utils.deps import check_ffmpeg
         from hftool.io.scene_detector import detect_scenes, extract_keyframes
-        from hftool.io.script_generator import analyze_frames, generate_script
 
         check_ffmpeg()
 
         work_dir = os.path.dirname(os.path.abspath(output_path))
         os.makedirs(work_dir, exist_ok=True)
 
-        # Step 1: Scene detection
-        self.app.call_from_thread(self._update_stage, "Step 1/6 — Detecting scenes...")
-        self.app.call_from_thread(self._set_progress_indeterminate)
-        scenes = detect_scenes(video_path, threshold=task.scene_threshold)
+        # Step 1: Scene detection (or fixed interval)
+        capture_interval = getattr(self, '_capture_interval', 'auto')
+        if capture_interval != "auto":
+            interval_s = float(capture_interval)
+            self.app.call_from_thread(self._update_stage, f"Step 1/6 — Capturing every {interval_s:.0f}s...")
+            self.app.call_from_thread(self._set_progress_indeterminate)
+            # Use fixed intervals instead of scene detection
+            from hftool.io.scene_detector import _fixed_interval_scenes, get_video_duration_ms, SceneDetectionResult, SceneInfo
+            duration_ms = get_video_duration_ms(video_path)
+            intervals = _fixed_interval_scenes(duration_ms, interval_s=interval_s)
+            scenes = SceneDetectionResult(
+                scenes=[SceneInfo(index=i, start_ms=s, end_ms=e) for i, (s, e) in enumerate(intervals)],
+                video_duration_ms=duration_ms,
+                video_path=video_path,
+            )
+        else:
+            self.app.call_from_thread(self._update_stage, "Step 1/6 — Detecting scenes...")
+            self.app.call_from_thread(self._set_progress_indeterminate)
+            scenes = detect_scenes(video_path, threshold=task.scene_threshold)
         self.app.call_from_thread(self._log, f"  Found {len(scenes.scenes)} scenes")
 
         if self._cancel_event.is_set():

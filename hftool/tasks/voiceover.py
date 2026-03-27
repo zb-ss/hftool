@@ -33,6 +33,7 @@ class VoiceoverTask:
         device: str = "auto",
         dtype: Optional[str] = None,
         tts_model: str = "kokoro",
+        voice: str = "af_heart",
         voice_ref: Optional[str] = None,
         exaggeration: float = 0.4,
         segments_dir: Optional[str] = None,
@@ -45,6 +46,7 @@ class VoiceoverTask:
         self.device = device
         self.dtype = dtype
         self.tts_model = tts_model
+        self.voice = voice
         self.voice_ref = voice_ref
         self.exaggeration = exaggeration
         self.segments_dir = segments_dir
@@ -96,7 +98,7 @@ class VoiceoverTask:
     def _load_tts(self) -> None:
         """Load the TTS task and model, downloading if needed."""
         from hftool.tasks.text_to_speech import TextToSpeechTask
-        from hftool.core.download import ensure_model_available, install_pip_dependencies
+        from hftool.core.download import ensure_model_available
         from hftool.core.models import MODEL_REGISTRY
 
         self._tts_task = TextToSpeechTask(device=self.device, dtype=self.dtype)
@@ -107,19 +109,16 @@ class VoiceoverTask:
         tts_models = MODEL_REGISTRY.get("text-to-speech", {})
         model_info = tts_models.get(self.tts_model)
         if model_info:
-            # Always ensure pip deps are installed (e.g. kokoro pip package)
-            if model_info.pip_dependencies:
-                install_pip_dependencies(model_info.pip_dependencies)
-            # Download HF model weights if not cached
-            if not os.path.exists(model_id):
-                self._log(f"  Downloading TTS model: {model_info.name} ({model_info.size_str})...")
-                ensure_model_available(
-                    repo_id=model_id,
-                    size_gb=model_info.size_gb,
-                    task_name="text-to-speech",
-                    model_name=model_info.name,
-                    auto_download=True,
-                )
+            self._log(f"  Ensuring TTS model: {model_info.name} ({model_info.size_str})...")
+            ensure_model_available(
+                repo_id=model_id,
+                size_gb=model_info.size_gb,
+                task_name="text-to-speech",
+                model_name=model_info.name,
+                auto_download=True,
+                pip_dependencies=model_info.pip_dependencies,
+                gated=model_info.gated,
+            )
 
         load_kwargs = {}
         if self.voice_ref:
@@ -157,6 +156,8 @@ class VoiceoverTask:
         t0 = time.time()
 
         infer_kwargs = {}
+        if self.voice:
+            infer_kwargs["voice"] = self.voice
         if self.voice_ref:
             infer_kwargs["voice_ref"] = self.voice_ref
         if "chatterbox" in self.tts_model.lower():
@@ -203,7 +204,7 @@ class VoiceoverTask:
     def _load_vlm(self) -> None:
         """Load the VLM task and model, downloading if needed."""
         from hftool.tasks.vision_language import VisionLanguageTask
-        from hftool.core.download import ensure_model_available, install_pip_dependencies
+        from hftool.core.download import ensure_model_available
         from hftool.core.models import MODEL_REGISTRY
 
         self._vlm_task = VisionLanguageTask(device=self.device, dtype=self.dtype)
@@ -213,17 +214,16 @@ class VoiceoverTask:
         vlm_models = MODEL_REGISTRY.get("vision-language", {})
         model_info = vlm_models.get(self.vlm_model)
         if model_info:
-            if model_info.pip_dependencies:
-                install_pip_dependencies(model_info.pip_dependencies)
-            if not os.path.exists(model_id):
-                self._log(f"  Downloading VLM model: {model_info.name} ({model_info.size_str})...")
-                ensure_model_available(
-                    repo_id=model_id,
-                    size_gb=model_info.size_gb,
-                    task_name="vision-language",
-                    model_name=model_info.name,
-                    auto_download=True,
-                )
+            self._log(f"  Ensuring VLM model: {model_info.name} ({model_info.size_str})...")
+            ensure_model_available(
+                repo_id=model_id,
+                size_gb=model_info.size_gb,
+                task_name="vision-language",
+                model_name=model_info.name,
+                auto_download=True,
+                pip_dependencies=model_info.pip_dependencies,
+                gated=model_info.gated,
+            )
 
         self._log(f"  Loading VLM model: {self.vlm_model}")
         self._vlm_task.load_pipeline(model_id)
