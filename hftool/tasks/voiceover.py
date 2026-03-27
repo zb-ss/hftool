@@ -367,11 +367,7 @@ class VoiceoverTask:
 
         for i, seg in enumerate(script.segments):
             seg_path = os.path.join(seg_dir, f"seg_{seg.id:03d}.wav")
-
-            if os.path.exists(seg_path):
-                self._log(f"  [{i + 1}/{total}] Seg {seg.id} exists, skipping")
-            else:
-                self._generate_segment(seg, seg_path, i + 1, total)
+            self._generate_segment(seg, seg_path, i + 1, total)
 
             segment_audios.append(SegmentAudio(
                 path=seg_path,

@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import threading
 from typing import Optional
 
@@ -370,6 +371,11 @@ class VoiceoverScreen(Screen):
         import sys, io
         from hftool.tasks.voiceover import VoiceoverTask
 
+        # Suppress transformers/safetensors progress bars — they use \r
+        # for in-place updates which renders as garbage in the RichLog
+        os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+
         # Capture stderr to prevent HIP/MIOpen warnings from spilling
         # onto the terminal behind the TUI
         _original_stderr = sys.stderr
@@ -416,8 +422,18 @@ class VoiceoverScreen(Screen):
             captured = sys.stderr.getvalue() if hasattr(sys.stderr, 'getvalue') else ""
             sys.stderr = _original_stderr
             if captured.strip():
-                # Show non-empty warnings in the log
-                for line in captured.strip().split("\n")[:5]:  # max 5 lines
+                # Filter out transformers progress bars (\r-based updates that
+                # concatenate into long unreadable lines in the RichLog)
+                for line in captured.strip().split("\n")[:10]:
+                    # Skip lines that are just concatenated progress bars
+                    if "Loading weights:" in line and line.count("Loading weights:") > 1:
+                        continue
+                    # Skip carriage-return in-place update fragments
+                    if "\r" in line:
+                        # Take the last \r-delimited fragment (the final state)
+                        line = line.rsplit("\r", 1)[-1].strip()
+                        if not line:
+                            continue
                     self.app.call_from_thread(self._log, f"[dim]{line}[/dim]")
 
             try:
@@ -574,11 +590,17 @@ class VoiceoverScreen(Screen):
         else:
             self.app.call_from_thread(self._log, "  [dim]No edits detected, using generated script[/dim]")
 
-        # Step 6: TTS + merge
+        # Step 6: TTS + merge — clean stale segment cache first
         self.app.call_from_thread(self._update_stage, "Step 6/6 — Generating voiceover audio...")
         self.app.call_from_thread(self._hide_editor)
         self.app.call_from_thread(self._set_progress_indeterminate)
         self.app.call_from_thread(self._log, f"  Voice: {task.voice}, TTS: {task.tts_model}, Segments: {len(script.segments)}")
+
+        # Remove old segment files so voice/script changes take effect
+        seg_dir = os.path.join(os.path.dirname(os.path.abspath(output_path)), "voiceover_segments")
+        if os.path.isdir(seg_dir):
+            shutil.rmtree(seg_dir, ignore_errors=True)
+
         task._generate_and_merge(script, output_path, video_path, keep_audio=False)
 
     def _run_revoice_with_edit(self, task, video_path: str, output_path: str) -> None:
@@ -630,9 +652,14 @@ class VoiceoverScreen(Screen):
             except Exception as e:
                 self.app.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
 
-        # Step 4: TTS + merge
+        # Step 4: TTS + merge — clean stale segment cache first
         self.app.call_from_thread(self._update_stage, "Step 4/4 — Generating voiceover audio...")
         self.app.call_from_thread(self._hide_editor)
+
+        seg_dir = os.path.join(os.path.dirname(os.path.abspath(output_path)), "voiceover_segments")
+        if os.path.isdir(seg_dir):
+            shutil.rmtree(seg_dir, ignore_errors=True)
+
         task._generate_and_merge(script, output_path, video_path, keep_audio=False)
 
     # --- UI update methods (called on UI thread via call_from_thread) ---

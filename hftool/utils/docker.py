@@ -496,6 +496,55 @@ def process_docker_args(
     return new_args, volume_mount, host_output_path
 
 
+def _fix_hf_cache_permissions(hf_home: str) -> None:
+    """Fix HuggingFace cache files with wrong ownership.
+
+    When Docker previously ran as root (or without --user), it creates
+    model cache dirs owned by root:root. Now that we run with --user,
+    the container can't write to those dirs. Use a quick Docker run
+    as root to chown the entire HF cache to the current user.
+    """
+    hub_dir = os.path.join(hf_home, "hub")
+    if not os.path.isdir(hub_dir):
+        return
+
+    try:
+        uid = os.getuid()
+        gid = os.getgid()
+    except (AttributeError, OSError):
+        return  # Windows
+
+    # Scan top-level hub entries for any owned by a different user
+    needs_fix = False
+    try:
+        for entry in os.scandir(hub_dir):
+            stat = entry.stat(follow_symlinks=False)
+            if stat.st_uid != uid:
+                needs_fix = True
+                break
+    except PermissionError:
+        needs_fix = True
+
+    if not needs_fix:
+        return
+
+    # Use Docker as root to fix ownership of the entire HF cache
+    import subprocess
+    try:
+        subprocess.run(
+            [
+                "docker", "run", "--rm",
+                "-v", f"{hf_home}:/data/hf",
+                "alpine:3.20",
+                "chown", "-R", f"{uid}:{gid}", "/data/hf",
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+    except Exception:
+        pass  # Best-effort — user will see the permission error if this fails
+
+
 def get_docker_run_command(
     hardware: HardwareInfo,
     hftool_args: List[str],
@@ -525,6 +574,11 @@ def get_docker_run_command(
     user_home = os.path.expanduser("~")
     hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
     hftool_config = os.environ.get("HFTOOL_CONFIG", os.path.expanduser("~/.hftool"))
+
+    # Fix HF cache lock permissions before running — earlier root-mode Docker
+    # runs may have created .locks/ subdirs owned by root, which become
+    # inaccessible when running with --user (non-root).
+    _fix_hf_cache_permissions(hf_home)
 
     # Support custom model directory (e.g., HFTOOL_MODELS_DIR=/data3/.hftool/models/)
     models_dir = os.environ.get("HFTOOL_MODELS_DIR")

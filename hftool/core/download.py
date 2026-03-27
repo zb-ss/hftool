@@ -298,6 +298,17 @@ def _clear_dependency_cache():
         pass
 
 
+def _running_in_pipx_hftool_env() -> bool:
+    """Return True when current Python belongs to pipx-managed hftool venv."""
+    exe_parts = [part.lower() for part in Path(sys.executable).resolve().parts]
+    prefix_parts = [part.lower() for part in Path(sys.prefix).resolve().parts]
+
+    def _looks_like_pipx_hftool(parts: List[str]) -> bool:
+        return "pipx" in parts and "venvs" in parts and "hftool" in parts
+
+    return _looks_like_pipx_hftool(exe_parts) or _looks_like_pipx_hftool(prefix_parts)
+
+
 def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, force: bool = False) -> bool:
     """Install or upgrade pip dependencies for a model.
     
@@ -324,47 +335,80 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, for
     
     click.echo(f"Installing/upgrading dependencies: {', '.join(dependencies)}")
     
-    # Try pipx inject first (if hftool was installed via pipx)
-    if use_pipx and shutil.which("pipx"):
+    # Try pipx inject first only when this process is running inside pipx's hftool venv.
+    # Otherwise pipx may install into a different environment than the active interpreter.
+    should_use_pipx = use_pipx and shutil.which("pipx") and _running_in_pipx_hftool_env()
+
+    if should_use_pipx:
         try:
-            # Check if hftool is installed via pipx
-            result = subprocess.run(
-                ["pipx", "list", "--short"],
-                capture_output=True,
-                text=True,
-            )
-            if "hftool" in result.stdout:
-                # Use pipx runpip to install into hftool's venv
-                for dep in dependencies:
-                    click.echo(f"  Upgrading {dep} via pipx...")
-                    install_cmd = ["pipx", "runpip", "hftool", "install", "--upgrade", dep]
-                    # flash-attn needs special handling
-                    if "flash-attn" in dep:
-                        install_cmd.extend(["--no-build-isolation"])
-                    
-                    proc = subprocess.run(install_cmd, capture_output=True, text=True)
-                    if proc.returncode != 0:
-                        click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
-                    else:
-                        click.echo(f"    Installed {dep}")
+            failed_deps = []
+            for dep in dependencies:
+                click.echo(f"  Upgrading {dep} via pipx...")
+                install_cmd = ["pipx", "runpip", "hftool", "install", "--upgrade", dep]
+                # flash-attn needs special handling
+                if "flash-attn" in dep:
+                    install_cmd.extend(["--no-build-isolation"])
+
+                proc = subprocess.run(install_cmd, capture_output=True, text=True)
+                if proc.returncode != 0:
+                    failed_deps.append(dep)
+                    click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
+                else:
+                    click.echo(f"    Installed {dep}")
+
+            if not failed_deps:
                 _clear_dependency_cache()
                 return True
+
+            click.echo(
+                f"  pipx install failed for: {', '.join(failed_deps)}; falling back to pip",
+                err=True,
+            )
+            dependencies = failed_deps
         except Exception as e:
             click.echo(f"  pipx injection failed: {e}, falling back to pip", err=True)
-    
+    elif use_pipx and shutil.which("pipx") and not _running_in_pipx_hftool_env():
+        click.echo("  pipx detected but current runtime is not pipx hftool; using pip", err=True)
+
     # Fall back to regular pip via subprocess (more reliable than pip.main)
     try:
-        import sys
+        failed_deps = []
         for dep in dependencies:
             click.echo(f"  Upgrading {dep} via pip...")
             install_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", dep]
             if "flash-attn" in dep:
                 install_cmd.append("--no-build-isolation")
             proc = subprocess.run(install_cmd, capture_output=True, text=True)
+
+            # Debian/Ubuntu externally-managed Python (PEP 668): retry explicitly.
+            if (
+                proc.returncode != 0
+                and "externally-managed-environment" in (proc.stderr or "").lower()
+            ):
+                click.echo(
+                    "    Externally managed Python detected, retrying with --break-system-packages...",
+                    err=True,
+                )
+                retry_cmd = install_cmd + ["--break-system-packages"]
+                proc = subprocess.run(retry_cmd, capture_output=True, text=True)
+
             if proc.returncode != 0:
+                failed_deps.append(dep)
                 click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
             else:
                 click.echo(f"    Installed {dep}")
+
+        if failed_deps:
+            click.echo(
+                f"  Failed to install required dependencies: {', '.join(failed_deps)}",
+                err=True,
+            )
+            click.echo(
+                f"  Please install manually: pip install --upgrade {' '.join(failed_deps)}",
+                err=True,
+            )
+            return False
+
         # Clear dependency cache so check_dependency re-checks after install
         _clear_dependency_cache()
         return True
@@ -399,7 +443,10 @@ def download_model_with_progress(
     """
     # Install pip dependencies first (before download)
     if pip_dependencies:
-        install_pip_dependencies(pip_dependencies)
+        if not install_pip_dependencies(pip_dependencies):
+            raise RuntimeError(
+                f"Failed to install required dependencies for {repo_id}: {', '.join(pip_dependencies)}"
+            )
     
     # Check if already downloaded
     if not force and is_model_downloaded(repo_id):
@@ -585,7 +632,11 @@ def ensure_model_available(
     if is_model_downloaded(repo_id):
         # Still need to install pip dependencies even if model is downloaded
         if pip_dependencies:
-            install_pip_dependencies(pip_dependencies)
+            if not install_pip_dependencies(pip_dependencies):
+                raise RuntimeError(
+                    f"Failed to install required dependencies for {model_name}: "
+                    f"{', '.join(pip_dependencies)}"
+                )
         return get_model_path(repo_id)
 
     # Check environment variable for auto-download behavior
