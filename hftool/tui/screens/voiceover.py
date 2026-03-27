@@ -247,6 +247,16 @@ class VoiceoverScreen(Screen):
             self.notify("Output path is required", severity="error")
             return
 
+        # Reset state from any previous run
+        self._script_ready = threading.Event()
+        self._edited_script = None
+        self._cancel_event = threading.Event()
+        self.query_one("#log", RichLog).clear()
+        self.query_one("#result-panel").display = False
+        self.query_one("#editor-section").display = False
+        self.query_one("#stage-label", Label).update("")
+        self.query_one("#progress", ProgressBar).update(total=100, progress=0)
+
         self.query_one("#start-btn").display = False
         self.query_one("#progress-section").display = True
 
@@ -574,6 +584,10 @@ class VoiceoverScreen(Screen):
             self._log(f"[green]Voiceover complete: {output_path}[/green]")
 
         result_panel.display = True
+
+        # Show start button again so user can run another voiceover
+        self.query_one("#start-btn").display = True
+        self.query_one("#start-btn").label = "Start New Voiceover"
 
     def _log(self, text: str) -> None:
         try:

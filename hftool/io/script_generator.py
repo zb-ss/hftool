@@ -20,33 +20,33 @@ from hftool.io.script_parser import ScriptData, ScriptSegment
 # Prompt templates
 # ---------------------------------------------------------------------------
 
-FRAME_ANALYSIS_PROMPT = """Describe this video frame for a narrator. Write 2-3 sentences covering:
-- What is shown on screen (UI, text, visuals)
-- What action or step is happening
+FRAME_ANALYSIS_PROMPT = """You are narrating a screen recording. Describe what the user is DOING in this frame — the action, not just what is visible. Write 1-2 short sentences as if narrating live.
 
-Previous frame context: {previous_description}
+What happened before: {previous_description}
 
-Reply with ONLY the description, no analysis headers or bullet points."""
+Continue the narrative naturally. Do NOT start with "This image shows" or "The screen displays". Instead describe the action: "The user opens...", "Next, they click...", "A list of results appears..."."""
 
-SCRIPT_ASSEMBLY_PROMPT = """Write a voiceover narration script for a video as a JSON array.
+SCRIPT_ASSEMBLY_PROMPT = """Create a continuous voiceover narration for a screen recording. The narration should flow naturally as one coherent story, not as separate descriptions of individual frames.
 
 Video length: {duration_s:.1f} seconds
 Style: {style} — {style_instructions}
 
-What happens in the video:
+Scene-by-scene actions (from frame analysis):
 {frame_descriptions}
 
-Output format — a JSON array, nothing else:
+Write a JSON array. Each segment is a spoken paragraph that covers 5-15 seconds:
 [
-  {{"id": 1, "start": "00:00:00.000", "end": "00:00:08.000", "text": "Your narration here..."}},
-  {{"id": 2, "start": "00:00:08.500", "end": "00:00:15.000", "text": "Next segment..."}}
+  {{"id": 1, "start": "00:00:00.000", "end": "00:00:08.000", "text": "First you open the dashboard and navigate to..."}},
+  {{"id": 2, "start": "00:00:08.500", "end": "00:00:15.000", "text": "From here, the schedule shows..."}}
 ]
 
-Requirements:
-- Each segment: 5-15 seconds, natural spoken language
-- Cover the full video duration with 0.5s pauses between segments
-- Describe what the USER is doing, not UI elements
-- Output ONLY the JSON array"""
+Rules:
+- Write it as ONE continuous narrative — each segment flows into the next
+- Use transitions: "Next...", "From here...", "Now...", "After that..."
+- Describe what the user DOES and WHY, not what the UI looks like
+- Leave 0.5s pauses between segments
+- Cover the full {duration_s:.1f} seconds
+- Output ONLY the JSON array, nothing else"""
 
 # ---------------------------------------------------------------------------
 # Narration styles
