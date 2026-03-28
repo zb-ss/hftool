@@ -81,12 +81,19 @@ def _run_docker_tui(gpu: str | None):
     gpu_indices = None
     if gpu:
         gpu_indices = parse_gpu_arg(gpu, hw.platform)
-    elif hw.platform == GPUPlatform.ROCM and sys.stdin.isatty():
+    elif hw.platform == GPUPlatform.ROCM:
         gpus = list_amd_gpus()
         if len(gpus) > 1:
-            gpu_indices = interactive_gpu_select(hw.platform)
-            if gpu_indices is None:
-                raise SystemExit(0)
+            if sys.stdin.isatty():
+                gpu_indices = interactive_gpu_select(hw.platform)
+                if gpu_indices is None:
+                    raise SystemExit(0)
+            else:
+                # Non-interactive (piped stdin): auto-select non-display GPU
+                # Running ML inference on the display GPU causes
+                # hipErrorIllegalState on multi-GPU AMD systems.
+                gpu_indices = parse_gpu_arg("auto", hw.platform)
+                click.echo(f"  Auto-selected GPU {gpu_indices} (non-display)", err=True)
         elif len(gpus) == 1:
             gpu_indices = [gpus[0].index]
 

@@ -26,7 +26,7 @@ except ImportError:
 
 def configure_rocm_env() -> None:
     """Configure environment variables for optimal ROCm performance.
-    
+
     This should be called early, before PyTorch operations.
     Sets up experimental features and memory optimizations for AMD GPUs.
     """
@@ -34,16 +34,52 @@ def configure_rocm_env() -> None:
     # This enables AOTriton optimizations for scaled_dot_product_attention
     if "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL" not in os.environ:
         os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
-    
+
     # Reduce memory fragmentation with expandable segments
     # Note: PYTORCH_HIP_ALLOC_CONF is deprecated, use PYTORCH_ALLOC_CONF
     if "PYTORCH_ALLOC_CONF" not in os.environ:
         os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
-    
+
     # Use hipBLAS instead of hipBLASLt for better compatibility on consumer GPUs
     # hipBLASLt is optimized for datacenter GPUs (MI250, MI300) but may not work well on RDNA3
     if "TORCH_BLAS_PREFER_HIPBLASLT" not in os.environ:
         os.environ["TORCH_BLAS_PREFER_HIPBLASLT"] = "0"
+
+    # Patch torch.repeat_interleave for ROCm HIP compatibility.
+    # This op crashes with hipErrorIllegalState when both input and
+    # repeats are CUDA tensors on RDNA3 GPUs (PyTorch 2.9 + ROCm 7.1).
+    # Must be applied BEFORE any model loads — not just VLM, since TTS
+    # and other models also trigger the same crash.
+    _patch_repeat_interleave_for_rocm()
+
+
+_REPEAT_INTERLEAVE_PATCHED = False
+
+
+def _patch_repeat_interleave_for_rocm() -> None:
+    """Globally patch ``torch.repeat_interleave`` for ROCm HIP.
+
+    ``torch.repeat_interleave`` with CUDA tensors crashes on RDNA3 GPUs
+    under ROCm HIP (``hipErrorIllegalState``).  The workaround moves
+    tensors to CPU for that single op, then back to the original device.
+    This is a no-op if PyTorch isn't available or isn't built for ROCm.
+    """
+    global _REPEAT_INTERLEAVE_PATCHED
+    if _REPEAT_INTERLEAVE_PATCHED or not _TORCH_AVAILABLE:
+        return
+    if getattr(torch.version, "hip", None) is None:
+        return
+
+    _original = torch.repeat_interleave
+
+    def _safe_repeat_interleave(input, repeats, *args, **kwargs):
+        if isinstance(repeats, torch.Tensor) and repeats.is_cuda:
+            device = input.device
+            return _original(input.cpu(), repeats.cpu(), *args, **kwargs).to(device)
+        return _original(input, repeats, *args, **kwargs)
+
+    torch.repeat_interleave = _safe_repeat_interleave
+    _REPEAT_INTERLEAVE_PATCHED = True
 
 
 @dataclass

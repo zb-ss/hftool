@@ -81,7 +81,9 @@ class TextToSpeechTask(TextInputMixin, BaseTask):
         Returns:
             Loaded pipeline or model components
         """
-        from hftool.core.device import detect_device
+        from hftool.core.device import configure_rocm_env, detect_device
+
+        configure_rocm_env()
 
         self._model_name = model
         self._model_type = self._detect_model_type(model)
