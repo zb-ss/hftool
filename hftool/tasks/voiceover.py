@@ -53,11 +53,14 @@ class VoiceoverTask:
         self.vlm_model = vlm_model
         self.narration_style = narration_style
         self.scene_threshold = scene_threshold
+        self.scene_grouping = True
         self.no_edit = no_edit
         self.save_script = save_script
         self._tts_task = None
         self._vlm_task = None
         self._console = None
+        self.log_callback = None
+        self.progress_callback = None
 
     def _get_console(self):
         """Get or create a Rich console for progress reporting."""
@@ -71,6 +74,9 @@ class VoiceoverTask:
 
     def _log(self, message: str) -> None:
         """Print a status message."""
+        if self.log_callback:
+            self.log_callback(message)
+            return
         console = self._get_console()
         if console:
             console.print(message)
@@ -184,54 +190,26 @@ class VoiceoverTask:
             f"           {duration:.1f}s audio in {elapsed:.1f}s"
         )
 
+        if self.progress_callback:
+            self.progress_callback(index, total)
+
         return duration
 
-    def _resolve_vlm_model(self, vlm_model: str) -> str:
-        """Resolve VLM model short name to repo_id."""
-        from hftool.core.models import MODEL_REGISTRY
-
-        vlm_models = MODEL_REGISTRY.get("vision-language", {})
-
-        if vlm_model in vlm_models:
-            return vlm_models[vlm_model].repo_id
-
-        for info in vlm_models.values():
-            if info.repo_id == vlm_model:
-                return vlm_model
-
-        return vlm_model
-
     def _load_vlm(self) -> None:
-        """Load the VLM task and model, downloading if needed."""
-        from hftool.tasks.vision_language import VisionLanguageTask
-        from hftool.core.download import ensure_model_available
-        from hftool.core.models import MODEL_REGISTRY
+        """Load the VLM provider (local model or API client)."""
+        from hftool.io.vlm_providers import create_vlm_provider
 
-        self._vlm_task = VisionLanguageTask(device=self.device, dtype=self.dtype)
-        model_id = self._resolve_vlm_model(self.vlm_model)
-
-        # Auto-install pip dependencies and download model if needed
-        vlm_models = MODEL_REGISTRY.get("vision-language", {})
-        model_info = vlm_models.get(self.vlm_model)
-        if model_info:
-            self._log(f"  Ensuring VLM model: {model_info.name} ({model_info.size_str})...")
-            ensure_model_available(
-                repo_id=model_id,
-                size_gb=model_info.size_gb,
-                task_name="vision-language",
-                model_name=model_info.name,
-                auto_download=True,
-                pip_dependencies=model_info.pip_dependencies,
-                gated=model_info.gated,
-            )
-
-        self._log(f"  Loading VLM model: {self.vlm_model}")
-        self._vlm_task.load_pipeline(model_id)
+        self._log(f"  Loading VLM: {self.vlm_model}")
+        self._vlm_task = create_vlm_provider(
+            self.vlm_model, device=self.device, dtype=self.dtype,
+        )
+        self._vlm_task.load()
 
     def _unload_vlm(self) -> None:
-        """Unload VLM to free VRAM before loading TTS."""
+        """Unload VLM to free VRAM (no-op for API providers)."""
         if self._vlm_task:
-            self._log("  Unloading VLM to free VRAM...")
+            if self._vlm_task.is_local:
+                self._log("  Unloading VLM to free VRAM...")
             self._vlm_task.cleanup()
             self._vlm_task = None
 
@@ -446,7 +424,7 @@ class VoiceoverTask:
         from hftool.utils.errors import HFToolError
         from hftool.utils.deps import check_ffmpeg
         from hftool.io.scene_detector import detect_scenes, extract_keyframes
-        from hftool.io.script_generator import analyze_frames, generate_script
+        from hftool.io.script_generator import analyze_frames, group_scenes, generate_script
         from hftool.io.script_review import review_script
 
         check_ffmpeg()
@@ -479,7 +457,13 @@ class VoiceoverTask:
         analyses = analyze_frames(self._vlm_task, scenes)
         self._log(f"  Analyzed {len(analyses)} frames")
 
-        self._log("[bold]Step 4:[/bold] Generating narration script...")
+        # Step 4: VLM scene grouping (merge adjacent scenes with same activity)
+        if self.scene_grouping:
+            self._log("[bold]Step 4:[/bold] Grouping scenes by activity...")
+            scenes, analyses = group_scenes(self._vlm_task, analyses, scenes)
+            self._log(f"  {len(scenes.scenes)} logical segments")
+
+        self._log("[bold]Step 5:[/bold] Generating narration script...")
         script = generate_script(
             self._vlm_task,
             analyses,
@@ -492,14 +476,14 @@ class VoiceoverTask:
         # Unload VLM before TTS (critical for VRAM on single-GPU systems)
         self._unload_vlm()
 
-        # Step 4: Save script if requested
+        # Save script if requested
         if self.save_script:
             from hftool.io.script_review import _write_json
             _write_json(script, self.save_script)
             self._log(f"  Script saved to: {self.save_script}")
 
-        # Step 5: Review script
-        self._log("[bold]Step 5:[/bold] Reviewing script...")
+        # Step 6: Review script
+        self._log("[bold]Step 6:[/bold] Reviewing script...")
         script = review_script(
             script,
             work_dir=work_dir,
@@ -507,8 +491,8 @@ class VoiceoverTask:
             save_path=self.save_script,
         )
 
-        # Step 6-8: TTS + merge (shared with other entry points)
-        self._log("[bold]Step 6:[/bold] Generating voiceover...")
+        # Step 7: TTS + merge (shared with other entry points)
+        self._log("[bold]Step 7:[/bold] Generating voiceover...")
         return self._generate_and_merge(script, output_path, video_path, keep_audio)
 
     def run_revoice(

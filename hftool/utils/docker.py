@@ -731,6 +731,12 @@ def get_docker_run_command(
         if value:
             cmd.extend(["-e", f"{var}={value}"])
 
+    # Pass through API keys for cloud VLM providers (voiceover pipeline)
+    for api_var in ("OPENAI_API_KEY", "GOOGLE_API_KEY"):
+        value = os.environ.get(api_var)
+        if value:
+            cmd.extend(["-e", f"{api_var}={value}"])
+
     # Pass through debug and logging settings
     if os.environ.get("HFTOOL_DEBUG"):
         cmd.extend(["-e", f"HFTOOL_DEBUG={os.environ['HFTOOL_DEBUG']}"])

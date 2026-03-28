@@ -59,23 +59,85 @@ class ScriptData:
             lines.append("")
         return "\n".join(lines)
 
-    def to_json(self) -> str:
-        """Convert to JSON format string."""
-        data = {
-            "metadata": self.metadata,
-            "segments": [
-                {
-                    "id": seg.id,
-                    "start": _ms_to_timestamp(seg.start_ms),
-                    "end": _ms_to_timestamp(seg.end_ms),
-                    "text": seg.text,
-                    **({"voice": seg.voice} if seg.voice else {}),
-                    **({"emotion": seg.emotion} if seg.emotion else {}),
-                }
-                for seg in self.segments
-            ],
-        }
-        return json.dumps(data, indent=2)
+    def to_json(self, include_context: bool = False) -> str:
+        """Convert to JSON format string.
+
+        Args:
+            include_context: If True and scene_contexts are available in
+                metadata, add a read-only ``context`` field to each segment
+                showing what is on screen at that timestamp.
+        """
+        contexts = self.metadata.get("scene_contexts", []) if include_context else []
+
+        def _find_context(start_ms: int, end_ms: int) -> str:
+            best, best_dist = "", float("inf")
+            mid = (start_ms + end_ms) // 2
+            for ctx in contexts:
+                dist = abs(ctx.get("timestamp_ms", 0) - mid)
+                if dist < best_dist:
+                    best_dist = dist
+                    best = ctx.get("description", "")
+            return best
+
+        seg_list = []
+        for seg in self.segments:
+            entry: dict = {
+                "id": seg.id,
+                "start": _ms_to_timestamp(seg.start_ms),
+                "end": _ms_to_timestamp(seg.end_ms),
+                "text": seg.text,
+            }
+            if contexts:
+                ctx = _find_context(seg.start_ms, seg.end_ms)
+                if ctx:
+                    entry["context"] = ctx
+            if seg.voice:
+                entry["voice"] = seg.voice
+            if seg.emotion:
+                entry["emotion"] = seg.emotion
+            seg_list.append(entry)
+
+        data = {"metadata": self.metadata, "segments": seg_list}
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+    def to_editor_json(self) -> str:
+        """Convert to a human-friendly JSON format for script editing.
+
+        Uses short timestamps (M:SS) instead of milliseconds and includes
+        scene context annotations and keyframe paths so the editor can see
+        what is on screen without watching the video.  Delete a segment to
+        create silence.
+        """
+        contexts = self.metadata.get("scene_contexts", [])
+
+        def _find_context(start_ms: int, end_ms: int) -> tuple:
+            """Return (description, image_path) for the closest context."""
+            best_desc, best_img, best_dist = "", "", float("inf")
+            mid = (start_ms + end_ms) // 2
+            for ctx in contexts:
+                dist = abs(ctx.get("timestamp_ms", 0) - mid)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_desc = ctx.get("description", "")
+                    best_img = ctx.get("image_path", "")
+            return best_desc, best_img
+
+        segments = []
+        for seg in self.segments:
+            entry: dict = {
+                "start": _ms_to_short_timestamp(seg.start_ms),
+                "end": _ms_to_short_timestamp(seg.end_ms),
+            }
+            if contexts:
+                desc, img = _find_context(seg.start_ms, seg.end_ms)
+                if desc:
+                    entry["context"] = desc
+                if img:
+                    entry["keyframe"] = img
+            entry["text"] = seg.text
+            segments.append(entry)
+
+        return json.dumps(segments, indent=2, ensure_ascii=False)
 
 
 def parse_script(path: str) -> ScriptData:
@@ -321,3 +383,50 @@ def _ms_to_timestamp(ms: int) -> str:
     seconds = ms // 1000
     millis = ms % 1000
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+
+def _ms_to_short_timestamp(ms: int) -> str:
+    """Convert milliseconds to short M:SS or H:MM:SS format for editing."""
+    total_seconds = ms // 1000
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
+
+
+def parse_editor_segments(raw: list) -> List[ScriptSegment]:
+    """Parse segments from the editor JSON array format.
+
+    Handles both human-readable timestamps (``"start": "1:05"``) and
+    millisecond timestamps (``"start_ms": 65000``).  The ``context`` field
+    is ignored (it is a read-only annotation for the editor).
+
+    Args:
+        raw: List of dicts from parsed editor JSON.
+
+    Returns:
+        List of ScriptSegment objects.
+    """
+    segments: List[ScriptSegment] = []
+    for i, entry in enumerate(raw):
+        text = str(entry.get("text", "")).strip()
+        if not text:
+            continue
+
+        if "start" in entry and isinstance(entry["start"], str):
+            start_ms = _timestamp_to_ms(str(entry["start"]))
+            end_ms = _timestamp_to_ms(str(entry.get("end", "0:00")))
+        else:
+            start_ms = int(entry.get("start_ms", 0))
+            end_ms = int(entry.get("end_ms", 0))
+
+        segments.append(ScriptSegment(
+            id=i + 1,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            text=text,
+        ))
+
+    return segments

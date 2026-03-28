@@ -213,7 +213,9 @@ Optional dependencies are split into extras: `with_t2i`, `with_t2v`, `with_tts`,
 | `tui/screens/` | HomeScreen, TaskScreen, GenerationScreen, VoiceoverScreen, etc. |
 | `tui/widgets/` | SystemInfo, ModelTable, FileBrowser widgets |
 | `io/interactive_mode.py` | Full interactive wizard (-I flag) |
+| `io/vlm_providers.py` | VLM provider abstraction (local, OpenAI, Gemini) |
 | `utils/errors.py` | Error handling with pattern matching |
+| `utils/clipboard.py` | Cross-platform clipboard (wl-copy, xclip, pbcopy) |
 | `utils/docker.py` | Docker utilities, hardware detection, GPU device passthrough |
 | `docker/` | Dockerfiles for ROCm, CUDA, CPU |
 
@@ -321,6 +323,8 @@ raise HFToolError("Message", suggestion="How to fix it")
 | `HFTOOL_ROCM_PATH` | AMD ROCm library path |
 | `HSA_OVERRIDE_GFX_VERSION` | AMD GPU architecture |
 | `HF_TOKEN` | HuggingFace token for gated models |
+| `OPENAI_API_KEY` | OpenAI API key for cloud VLM (`openai/gpt-4o`, etc.) |
+| `GOOGLE_API_KEY` | Google API key for cloud VLM (`google/gemini-2.5-flash`, etc.) |
 
 ## Supported Tasks
 
@@ -333,6 +337,25 @@ raise HFToolError("Message", suggestion="How to fix it")
 - **vision-language** (vlm): Qwen 3 VL, InternVL 3.5
 - **automatic-speech-recognition** (asr/stt): Whisper
 - Various transformers pipeline tasks (text-generation, summarization, etc.)
+
+## Voiceover VLM Providers
+
+The voiceover pipeline supports local and cloud VLM providers for frame analysis. The `--vlm-model` flag uses a `provider/model` prefix convention:
+
+```bash
+# Local (default, requires GPU + ~15GB VRAM)
+hftool voiceover --auto --vlm-model qwen3-vl-8b --video demo.mp4 -o out.mp4
+
+# OpenAI (requires OPENAI_API_KEY env var)
+hftool voiceover --auto --vlm-model openai/gpt-4o-mini --video demo.mp4 -o out.mp4
+
+# Google Gemini (requires GOOGLE_API_KEY env var)
+hftool voiceover --auto --vlm-model google/gemini-2.5-flash --video demo.mp4 -o out.mp4
+```
+
+Provider detection uses the prefix before `/`: `openai/` → OpenAI, `google/` → Gemini, no known prefix → local model. API keys are read from environment variables and passed through to Docker automatically. The SDKs (`openai`, `google-genai`) are auto-installed on first use.
+
+Key files: `io/vlm_providers.py` (VLMProvider ABC, LocalVLMProvider, OpenAIVLMProvider, GoogleVLMProvider), `utils/docker.py` (API key passthrough).
 
 ## External Dependencies
 

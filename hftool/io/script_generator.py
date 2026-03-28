@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from hftool.io.scene_detector import SceneDetectionResult
@@ -26,7 +26,7 @@ What happened before: {previous_description}
 
 Continue the narrative naturally. Do NOT start with "This image shows" or "The screen displays". Instead describe the action: "The user opens...", "Next, they click...", "A list of results appears..."."""
 
-SCRIPT_ASSEMBLY_PROMPT = """Create a continuous voiceover narration for a screen recording. The narration should flow naturally as one coherent story, not as separate descriptions of individual frames.
+SCRIPT_ASSEMBLY_PROMPT = """Create a voiceover narration for a screen recording. Narrate ONLY key moments — silence is natural and preferred over filler or repetition.
 
 Video length: {duration_s:.1f} seconds
 Style: {style} — {style_instructions}
@@ -34,18 +34,20 @@ Style: {style} — {style_instructions}
 Scene-by-scene actions (from frame analysis):
 {frame_descriptions}
 
-Write a JSON array. Each segment is a spoken paragraph that covers 5-15 seconds:
+Write a JSON array. Each segment is a short spoken line (1-2 sentences) timed to a specific meaningful action:
 [
-  {{"id": 1, "start": "00:00:00.000", "end": "00:00:08.000", "text": "First you open the dashboard and navigate to..."}},
-  {{"id": 2, "start": "00:00:08.500", "end": "00:00:15.000", "text": "From here, the schedule shows..."}}
+  {{"id": 1, "start": "00:00:01.000", "end": "00:00:06.000", "text": "You open the dashboard and navigate to settings."}},
+  {{"id": 2, "start": "00:00:12.000", "end": "00:00:17.000", "text": "Here you configure the notification preferences."}}
 ]
 
 Rules:
-- Write it as ONE continuous narrative — each segment flows into the next
-- Use transitions: "Next...", "From here...", "Now...", "After that..."
+- ONLY narrate when something meaningful happens — skip trivial, repetitive, or loading actions
+- If consecutive scenes show the same activity continuing (scrolling, waiting, typing), narrate it ONCE then stay silent
+- Never repeat information already covered in a previous segment
+- Segments must NOT overlap — leave gaps of silence between narrated moments
+- Each segment: 3-10 seconds of speech, max 2 sentences
+- Aim for 40-70% coverage of the video — the rest should be silence
 - Describe what the user DOES and WHY, not what the UI looks like
-- Leave 0.5s pauses between segments
-- Cover the full {duration_s:.1f} seconds
 - Output ONLY the JSON array, nothing else"""
 
 # ---------------------------------------------------------------------------
@@ -60,6 +62,26 @@ NARRATION_STYLES: dict[str, str] = {
     "formal": "Third-person professional. Documentation style. Pace: steady, precise.",
 }
 
+SCENE_GROUPING_PROMPT = """Analyze these scene descriptions from a video and group adjacent scenes that represent the SAME logical activity into unified segments.
+
+Scenes:
+{scene_descriptions}
+
+Output a JSON array of groups. Each group contains adjacent scene indices that belong to the same activity:
+[
+  {{"label": "Brief activity description", "scenes": [0, 1, 2]}},
+  {{"label": "Brief activity description", "scenes": [3]}},
+  {{"label": "Brief activity description", "scenes": [4, 5]}}
+]
+
+Rules:
+- Only merge ADJACENT scenes (consecutive indices, no gaps)
+- Merge scenes that show the same action continuing (scrolling, typing, navigating the same page/area)
+- Keep scenes separate if the user switches to a clearly different task, screen, or application
+- A single scene can be its own group if it represents a distinct activity
+- Every scene index must appear in exactly one group
+- Output ONLY the JSON array, nothing else"""
+
 # ---------------------------------------------------------------------------
 # Dataclass
 # ---------------------------------------------------------------------------
@@ -73,6 +95,29 @@ class FrameAnalysis:
     timestamp_ms: int
     image_path: str
     description: str
+
+
+# ---------------------------------------------------------------------------
+# Internal — provider compatibility
+# ---------------------------------------------------------------------------
+
+
+def _vlm_text_call(vlm: Any, prompt: str) -> str:
+    """Run a text-only VLM call, supporting both VLMProvider and legacy vlm_task."""
+    # VLMProvider (new)
+    if hasattr(vlm, "text_inference"):
+        return vlm.text_inference(prompt)
+
+    # Legacy VisionLanguageTask
+    response = vlm.run_inference(vlm._pipeline, {"prompt": prompt})
+    if isinstance(response, dict):
+        return response.get("text", response.get("output", str(response)))
+    return str(response)
+
+
+def _vlm_frame_call(vlm: Any, image_path: str, prompt: str, previous_context: str = "") -> str:
+    """Run a frame analysis call, supporting both VLMProvider and legacy vlm_task."""
+    return vlm.analyze_frame(image_path, prompt, previous_context=previous_context)
 
 
 # ---------------------------------------------------------------------------
@@ -121,11 +166,7 @@ def analyze_frames(
                 f"  Analyzing frame: scene {scene.index}, "
                 f"t={scene.start_ms}ms ({image_path})"
             )
-            description = vlm_task.analyze_frame(
-                image_path,
-                prompt,
-                previous_context=prev_description,
-            )
+            description = _vlm_frame_call(vlm_task, image_path, prompt, prev_description)
             analysis = FrameAnalysis(
                 scene_index=scene.index,
                 timestamp_ms=scene.start_ms,
@@ -136,6 +177,104 @@ def analyze_frames(
             prev_description = description
 
     return analyses
+
+
+def group_scenes(
+    vlm_task: Any,
+    analyses: List[FrameAnalysis],
+    scenes: "SceneDetectionResult",
+) -> Tuple["SceneDetectionResult", List[FrameAnalysis]]:
+    """Use VLM to group adjacent scenes that represent the same logical activity.
+
+    Sends scene descriptions (text-only, no images) to the VLM and asks it to
+    identify which adjacent scenes should be merged.  This produces fewer,
+    more meaningful segments for script assembly.
+
+    Args:
+        vlm_task: Loaded VisionLanguageTask instance with run_inference()
+        analyses: Frame analyses from analyze_frames()
+        scenes: SceneDetectionResult from scene_detector
+
+    Returns:
+        Tuple of (updated SceneDetectionResult, updated FrameAnalysis list)
+        with merged scenes and remapped indices.  Falls back to the originals
+        if grouping fails.
+    """
+    from hftool.io.scene_detector import SceneInfo, SceneDetectionResult as SDResult
+
+    if len(scenes.scenes) <= 2:
+        return scenes, analyses
+
+    # Index analyses by scene
+    analysis_by_scene: dict[int, List[FrameAnalysis]] = {}
+    for a in analyses:
+        analysis_by_scene.setdefault(a.scene_index, []).append(a)
+
+    # Build description block for the prompt
+    desc_lines = []
+    for scene in scenes.scenes:
+        parts = [a.description for a in analysis_by_scene.get(scene.index, [])]
+        description = " ".join(parts) if parts else "No description available."
+        start_ts = _ms_to_timestamp(scene.start_ms)
+        end_ts = _ms_to_timestamp(scene.end_ms)
+        desc_lines.append(f"[{start_ts} - {end_ts}] Scene {scene.index}: {description}")
+
+    prompt = SCENE_GROUPING_PROMPT.format(scene_descriptions="\n".join(desc_lines))
+
+    print("  Grouping scenes by logical activity...")
+
+    # Text-only VLM call — no image, minimal VRAM
+    response_text = _vlm_text_call(vlm_task, prompt)
+
+    try:
+        raw_groups = _extract_json(response_text)
+        groups = _validate_scene_groups(raw_groups, len(scenes.scenes))
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"  Warning: Scene grouping failed ({exc}), keeping original scenes.")
+        return scenes, analyses
+
+    # Merge scenes according to validated groups
+    scene_by_index = {s.index: s for s in scenes.scenes}
+    merged_scenes: List[SceneInfo] = []
+    merged_analyses: List[FrameAnalysis] = []
+
+    for group_idx, group in enumerate(groups):
+        indices = group["scenes"]
+        first = scene_by_index[indices[0]]
+        last = scene_by_index[indices[-1]]
+
+        combined_keyframes: List[str] = []
+        for si in indices:
+            combined_keyframes.extend(scene_by_index[si].keyframe_paths)
+
+        merged_scenes.append(SceneInfo(
+            index=group_idx,
+            start_ms=first.start_ms,
+            end_ms=last.end_ms,
+            keyframe_paths=combined_keyframes,
+        ))
+
+        for si in indices:
+            for a in analysis_by_scene.get(si, []):
+                merged_analyses.append(FrameAnalysis(
+                    scene_index=group_idx,
+                    timestamp_ms=a.timestamp_ms,
+                    image_path=a.image_path,
+                    description=a.description,
+                ))
+
+    original_count = len(scenes.scenes)
+    merged_count = len(merged_scenes)
+    print(f"  Grouped {original_count} scenes → {merged_count} logical segments")
+
+    merged_result = SDResult(
+        scenes=merged_scenes,
+        video_duration_ms=scenes.video_duration_ms,
+        video_path=scenes.video_path,
+        keyframe_dir=scenes.keyframe_dir,
+    )
+
+    return merged_result, merged_analyses
 
 
 def generate_script(
@@ -189,18 +328,7 @@ def generate_script(
     print(f"  Generating narration script (style: {style}, duration: {duration_s:.1f}s)...")
 
     # Text-only call — script assembly uses frame descriptions, no image needed.
-    # This saves ~3GB VRAM vs sending an image with the prompt.
-    response = vlm_task.run_inference(
-        vlm_task._pipeline,
-        {"prompt": prompt},
-    )
-
-    # run_inference returns a dict; extract the text response
-    response_text: str = ""
-    if isinstance(response, dict):
-        response_text = response.get("text", response.get("output", str(response)))
-    else:
-        response_text = str(response)
+    response_text = _vlm_text_call(vlm_task, prompt)
 
     # Parse the JSON script
     try:
@@ -210,6 +338,11 @@ def generate_script(
             "style": style,
             "generated_by": "script_generator",
             "video_duration_ms": duration_ms,
+            "scene_contexts": [
+                {"timestamp_ms": a.timestamp_ms, "scene_index": a.scene_index,
+                 "description": a.description, "image_path": a.image_path}
+                for a in analyses
+            ],
         }
         return ScriptData(segments=segments, metadata=metadata)
     except (ValueError, KeyError, TypeError) as exc:
@@ -220,6 +353,62 @@ def generate_script(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _validate_scene_groups(raw_groups: list, num_scenes: int) -> List[dict]:
+    """Validate and normalize VLM scene groupings.
+
+    Ensures every scene index appears exactly once, groups contain only
+    adjacent indices, and gaps are filled with singleton groups.
+
+    Args:
+        raw_groups: Parsed JSON list from VLM response
+        num_scenes: Total number of scenes to validate against
+
+    Returns:
+        Sorted list of group dicts with "label" and "scenes" keys
+
+    Raises:
+        ValueError: If raw_groups is empty or has no valid entries
+    """
+    groups: List[dict] = []
+    seen: set[int] = set()
+
+    for entry in raw_groups:
+        if not isinstance(entry, dict):
+            continue
+        indices = entry.get("scenes", [])
+        label = str(entry.get("label", ""))
+
+        # Filter to valid, unseen indices
+        valid = [i for i in indices if isinstance(i, int) and 0 <= i < num_scenes and i not in seen]
+        if not valid:
+            continue
+
+        # Split into contiguous runs (VLM might skip an index)
+        valid.sort()
+        runs: List[List[int]] = [[valid[0]]]
+        for i in range(1, len(valid)):
+            if valid[i] == runs[-1][-1] + 1:
+                runs[-1].append(valid[i])
+            else:
+                runs.append([valid[i]])
+
+        for run in runs:
+            groups.append({"label": label, "scenes": run})
+            seen.update(run)
+
+    # Fill any missing indices as singletons
+    for i in range(num_scenes):
+        if i not in seen:
+            groups.append({"label": f"Scene {i}", "scenes": [i]})
+
+    groups.sort(key=lambda g: g["scenes"][0])
+
+    if not groups:
+        raise ValueError("No valid scene groups produced")
+
+    return groups
 
 
 def _extract_json(text: str) -> list:

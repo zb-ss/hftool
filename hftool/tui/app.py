@@ -131,6 +131,51 @@ class HFToolApp(App):
     def on_mount(self) -> None:
         self.push_screen("home")
 
+    def on_text_selected(self) -> None:
+        """Auto-copy selected text to clipboard when user highlights with mouse.
+
+        Inside Docker the container is isolated from the host clipboard,
+        so we skip the attempt and rely on Shift+mouse for native terminal
+        selection instead.
+        """
+        import os
+        import re
+        from textual.widgets import TextArea
+
+        # Inside Docker, clipboard tools can't reach the host — don't
+        # show a misleading "Copied" notification.
+        if os.environ.get("HFTOOL_IN_DOCKER"):
+            return
+
+        # Try screen-level selection (Static, Label, RichLog, etc.)
+        text = self.screen.get_selected_text()
+
+        # Fall back to TextArea selections
+        if not text or not text.strip():
+            try:
+                for ta in self.screen.query(TextArea):
+                    sel = ta.selected_text
+                    if sel and sel.strip():
+                        text = sel
+                        break
+            except Exception:
+                pass
+
+        if not text or not text.strip():
+            return
+
+        # Strip ANSI escape codes
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", text).strip()
+        if not clean:
+            return
+
+        from hftool.utils.clipboard import copy_to_clipboard
+
+        if copy_to_clipboard(clean):
+            lines = len(clean.splitlines())
+            label = f"{lines} lines" if lines > 1 else f"{len(clean)} chars"
+            self.notify(f"Copied {label}", severity="information", timeout=2)
+
 
 def main():
     """Entry point for hftool-tui command."""

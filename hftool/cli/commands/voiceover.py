@@ -17,9 +17,11 @@ import click
 @click.option("--segments-dir", default=None, help="Directory to store/find segment WAV files")
 @click.option("--voice-ref", default=None, help="Reference audio for voice cloning (Chatterbox only)")
 @click.option("--exaggeration", type=float, default=0.4, help="Emotion control for Chatterbox (default: 0.4)")
-@click.option("--vlm-model", default="qwen3-vl-8b", help="VLM for frame analysis (default: qwen3-vl-8b)")
+@click.option("--vlm-model", default="qwen3-vl-8b",
+              help="VLM model: local name or provider/model (openai/gpt-4o, google/gemini-2.5-flash)")
 @click.option("--style", type=click.Choice(["tutorial", "presentation", "demo", "casual", "formal"]), default="tutorial", help="Narration style for auto mode")
 @click.option("--scene-threshold", type=float, default=3.0, help="Scene detection sensitivity (default: 3.0)")
+@click.option("--no-scene-grouping", is_flag=True, default=False, help="Skip VLM scene grouping (use raw visual cuts)")
 @click.option("--no-edit", is_flag=True, help="Skip editor review of generated script")
 @click.option("--save-script", default=None, help="Save generated script to file path")
 @click.option("--device", "-d", default="auto", help="Device to use (auto, cuda, mps, cpu)")
@@ -40,6 +42,7 @@ def voiceover_command(
     vlm_model: str,
     style: str,
     scene_threshold: float,
+    no_scene_grouping: bool,
     no_edit: bool,
     save_script: Optional[str],
     device: str,
@@ -117,6 +120,7 @@ def voiceover_command(
         no_edit=no_edit,
         save_script=save_script,
     )
+    task.scene_grouping = not no_scene_grouping
 
     try:
         if mode_auto:

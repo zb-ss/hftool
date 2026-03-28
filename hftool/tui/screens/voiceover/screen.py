@@ -1,8 +1,13 @@
-"""VoiceoverScreen — multi-step voiceover wizard with inline script editor."""
+"""VoiceoverScreen — multi-step voiceover wizard with inline script editor.
 
-import json
+This is the thin Screen shell.  Pipeline orchestration lives in
+``pipeline.py``, VLM model selection in ``vlm_selector.py``, the inline
+script editor in ``script_editor.py``, and path utilities in ``path_utils.py``.
+"""
+
+from __future__ import annotations
+
 import os
-import shutil
 import threading
 from typing import Optional
 
@@ -10,15 +15,29 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import (
-    Button, Footer, Header, Input, Label, ProgressBar,
-    RadioButton, RadioSet, RichLog, Select, Static, TextArea,
+    Button,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ProgressBar,
+    RadioButton,
+    RadioSet,
+    RichLog,
+    Select,
+    Static,
+    TextArea,
 )
 
+from hftool.tui.screens.voiceover.path_utils import open_path
+from hftool.tui.screens.voiceover.pipeline import VoiceoverPipeline
+from hftool.tui.screens.voiceover.script_editor import ScriptEditorMixin
+from hftool.tui.screens.voiceover.vlm_selector import VlmSelectorMixin
 
-class VoiceoverScreen(Screen):
+
+class VoiceoverScreen(VlmSelectorMixin, ScriptEditorMixin, Screen):
     """Multi-step voiceover wizard.
 
     Modes:
@@ -91,6 +110,23 @@ class VoiceoverScreen(Screen):
         width: 12;
         margin: 0 0 0 1;
     }
+    #vlm-source-row, #vlm-local-row, #vlm-online-row {
+        height: auto;
+        margin: 0 0 1 0;
+    }
+    #vlm-source-row > Select {
+        width: 1fr;
+    }
+    #vlm-local-row > Select {
+        width: 1fr;
+    }
+    #vlm-online-row > Select {
+        width: 1fr;
+    }
+    #vlm-online-row > Button {
+        width: 10;
+        margin: 0 0 0 1;
+    }
     #capture-row {
         height: auto;
     }
@@ -139,14 +175,28 @@ class VoiceoverScreen(Screen):
         margin: 1 0;
         height: auto;
     }
+    #result-text {
+        width: 1fr;
+    }
+    #open-output-btn {
+        width: 10;
+        margin: 0 0 0 1;
+    }
     """
 
-    def __init__(self):
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def __init__(self) -> None:
         super().__init__()
+        self._init_vlm_selector()
+        self._init_script_editor()
         self._running = False
-        self._script_ready = threading.Event()
-        self._edited_script: Optional[str] = None
+        self._run_seq = 0
+        self._active_run_id: Optional[int] = None
         self._cancel_event = threading.Event()
+        self._output_path: Optional[str] = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -220,6 +270,56 @@ class VoiceoverScreen(Screen):
                     yield Input(placeholder="Voice clone ref audio (.wav)", id="voice-ref-input")
                     yield Button("Browse", id="browse-voice-ref")
 
+                yield Label("VLM (frame analysis):", classes="field-label")
+                with Horizontal(id="vlm-source-row"):
+                    yield Select(
+                        [
+                            ("Local model (in container)", "local"),
+                            ("Online API model", "online"),
+                        ],
+                        value="local",
+                        id="vlm-source-select",
+                    )
+
+                with Horizontal(id="vlm-local-row"):
+                    from hftool.io.vlm_providers import get_available_vlm_options
+
+                    vlm_options = get_available_vlm_options()
+                    yield Select(
+                        vlm_options,
+                        value=vlm_options[0][1] if vlm_options else "qwen3-vl-8b",
+                        id="vlm-local-select",
+                    )
+
+                with Horizontal(id="vlm-online-row"):
+                    from hftool.io.vlm_providers import (
+                        DEFAULT_ONLINE_VLM_MODEL,
+                        get_default_cloud_vlm_models,
+                    )
+
+                    default_google_models = get_default_cloud_vlm_models("google")
+                    yield Select(
+                        [("Google Gemini", "google"), ("OpenAI", "openai")],
+                        value="google",
+                        id="vlm-provider-select",
+                    )
+                    yield Select(
+                        [(m, m) for m in default_google_models] if default_google_models
+                        else [(DEFAULT_ONLINE_VLM_MODEL, DEFAULT_ONLINE_VLM_MODEL)],
+                        value=DEFAULT_ONLINE_VLM_MODEL,
+                        id="vlm-online-model-select",
+                    )
+                    yield Button("Refresh", id="refresh-vlm-models")
+                yield Label(
+                    "Online models: loading defaults. Press Refresh to query provider endpoint.",
+                    id="vlm-online-status",
+                    classes="field-help",
+                )
+                yield Label(
+                    "Cloud providers need API keys: OPENAI_API_KEY or GOOGLE_API_KEY env vars",
+                    classes="field-help",
+                )
+
                 with Horizontal(id="capture-row"):
                     yield Select(
                         [
@@ -246,26 +346,35 @@ class VoiceoverScreen(Screen):
                 yield TextArea(id="script-editor")
                 with Horizontal(id="editor-buttons"):
                     yield Button("Continue", variant="success", id="continue-btn")
+                    yield Button("View Keyframes", variant="default", id="open-keyframes-btn")
                     yield Button("Cancel", variant="error", id="cancel-edit-btn")
 
             yield RichLog(highlight=True, markup=True, id="log")
-            yield Static(id="result-panel")
+            with Horizontal(id="result-panel"):
+                yield Static(id="result-text")
+                yield Button("Open", variant="primary", id="open-output-btn")
         yield Footer()
 
     def on_mount(self) -> None:
         self.query_one("#mode-section").border_title = "Mode"
         self.query_one("#files-section").border_title = "Files"
         self.query_one("#options-section").border_title = "Options"
-        self.query_one("#voice-ref-row").display = False  # Only for Chatterbox
+        self.query_one("#voice-ref-row").display = False
         self.query_one("#progress-section").border_title = "Progress"
         self.query_one("#progress-section").display = False
         self.query_one("#editor-section").border_title = "Edit Script"
         self.query_one("#editor-section").display = False
         self.query_one("#result-panel").display = False
         self.query_one("#result-panel").border_title = "Result"
+        self.query_one("#open-output-btn").display = False
+        self._apply_vlm_source_visibility("local")
+        self._refresh_online_models(force_refresh=False)
+
+    # ------------------------------------------------------------------
+    # Event handlers
+    # ------------------------------------------------------------------
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        """Show/hide voice cloning row based on TTS model selection."""
         try:
             control_id = event.control.id
         except AttributeError:
@@ -273,28 +382,60 @@ class VoiceoverScreen(Screen):
         if control_id == "tts-model-select":
             is_chatterbox = event.value == "chatterbox"
             self.query_one("#voice-ref-row").display = is_chatterbox
-            # Hide voice presets for chatterbox (uses cloned voice)
             self.query_one("#voice-row").display = not is_chatterbox
+        elif control_id == "vlm-source-select":
+            self._apply_vlm_source_visibility(str(event.value))
+        elif control_id == "vlm-provider-select":
+            self._refresh_online_models(force_refresh=False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "start-btn":
+        bid = event.button.id
+        if bid == "start-btn":
             self._start_voiceover()
-        elif event.button.id == "continue-btn":
+        elif bid == "continue-btn":
             self._continue_after_edit()
-        elif event.button.id == "cancel-edit-btn":
+        elif bid == "cancel-edit-btn":
             self._cancel_event.set()
             self._script_ready.set()
-        elif event.button.id == "browse-video":
+        elif bid == "browse-video":
             self._browse_file("video-input", "Select Video", [".mp4", ".mkv", ".avi", ".mov", ".webm"])
-        elif event.button.id == "browse-script":
+        elif bid == "browse-script":
             self._browse_file("script-input", "Select Script", [".srt", ".json"])
-        elif event.button.id == "browse-output":
+        elif bid == "browse-output":
             self._browse_file("output-input", "Select Output Location", [".mp4", ".wav"])
-        elif event.button.id == "browse-voice-ref":
+        elif bid == "browse-voice-ref":
             self._browse_file("voice-ref-input", "Select Voice Reference Audio", [".wav", ".mp3", ".flac", ".ogg"])
+        elif bid == "refresh-vlm-models":
+            self._refresh_online_models(force_refresh=True)
+        elif bid == "open-keyframes-btn":
+            self._open_keyframe_dir()
+        elif bid == "open-output-btn":
+            self._open_output_file()
+
+    def action_cancel_or_back(self) -> None:
+        if self._running:
+            if self.query_one("#editor-section").display:
+                self.notify(
+                    "Script is ready. Use Continue or Cancel buttons in the editor.",
+                    severity="warning",
+                    timeout=5,
+                )
+                try:
+                    self.query_one("#script-editor", TextArea).focus()
+                except Exception:
+                    pass
+                return
+            self._cancel_event.set()
+            self._script_ready.set()
+            self._log("[yellow]Cancelling...[/yellow]")
+        else:
+            self.app.pop_screen()
+
+    # ------------------------------------------------------------------
+    # File browsing / opening
+    # ------------------------------------------------------------------
 
     def _browse_file(self, input_id: str, title: str, extensions: list[str]) -> None:
-        """Open the file picker modal and populate the input on selection."""
         from hftool.tui.widgets.file_browser import FilePickerScreen
 
         def on_selected(path: str) -> None:
@@ -303,8 +444,32 @@ class VoiceoverScreen(Screen):
 
         self.app.push_screen(FilePickerScreen(title=title, extensions=extensions), on_selected)
 
+    def _open_keyframe_dir(self) -> None:
+        if not self._keyframe_dir or not os.path.isdir(self._keyframe_dir):
+            self.notify("Keyframes not available", severity="warning")
+            return
+        self._do_open_path(self._keyframe_dir)
+
+    def _open_output_file(self) -> None:
+        if not self._output_path or not os.path.isfile(self._output_path):
+            self.notify("Output file not found", severity="warning")
+            return
+        self._do_open_path(self._output_path)
+
+    def _do_open_path(self, path: str) -> None:
+        """Open a path using the platform-appropriate opener."""
+        open_path(
+            path,
+            notify_fn=lambda msg, sev: self.notify(msg, severity=sev, timeout=10),
+            log_fn=self._log,
+        )
+
+    # ------------------------------------------------------------------
+    # Form validation → worker launch
+    # ------------------------------------------------------------------
+
     def _start_voiceover(self) -> None:
-        """Validate inputs and launch voiceover in worker thread."""
+        """Validate inputs and launch voiceover in a worker thread."""
         mode_set = self.query_one("#mode-select", RadioSet)
         mode = "auto"
         if mode_set.pressed_index == 1:
@@ -321,6 +486,17 @@ class VoiceoverScreen(Screen):
         voice = self.query_one("#voice-select", Select).value
         voice_ref = self.query_one("#voice-ref-input", Input).value.strip()
         capture_interval = self.query_one("#capture-interval-select", Select).value
+        vlm_source = str(self.query_one("#vlm-source-select", Select).value)
+
+        if vlm_source == "online":
+            provider = str(self.query_one("#vlm-provider-select", Select).value).strip().lower()
+            online_model = str(self.query_one("#vlm-online-model-select", Select).value).strip()
+            if not online_model:
+                self.notify("Select an online model", severity="error")
+                return
+            vlm_model = f"{provider}/{online_model}"
+        else:
+            vlm_model = str(self.query_one("#vlm-local-select", Select).value).strip() or "qwen3-vl-8b"
 
         if mode in ("auto", "revoice") and not video_path:
             self.notify("Video path is required", severity="error")
@@ -344,14 +520,26 @@ class VoiceoverScreen(Screen):
 
         self.query_one("#start-btn").display = False
         self.query_one("#progress-section").display = True
+        self._run_seq += 1
+        self._active_run_id = self._run_seq
+        run_id = self._active_run_id
+        self.query_one("#stage-label", Label).update(f"[bold]Starting run #{run_id}...[/bold]")
 
         self._running = True
-        self._log(f"Starting voiceover ({mode} mode)...")
+        self._log(f"Starting voiceover run #{run_id} ({mode} mode)...")
+
+        # Scroll progress section into view so user sees feedback immediately
+        self.call_after_refresh(self._scroll_progress_visible)
 
         self._run_voiceover_worker(
             mode, video_path, script_path, output_path,
             tts_model, style, device, voice, voice_ref, capture_interval,
+            vlm_model,
         )
+
+    # ------------------------------------------------------------------
+    # Worker thread
+    # ------------------------------------------------------------------
 
     @work(thread=True)
     def _run_voiceover_worker(
@@ -366,20 +554,26 @@ class VoiceoverScreen(Screen):
         voice: str = "af_heart",
         voice_ref: str = "",
         capture_interval: str = "auto",
+        vlm_model: str = "qwen3-vl-8b",
     ) -> None:
         """Run the voiceover pipeline in a background thread."""
-        import sys, io
+        import logging
+
         from hftool.tasks.voiceover import VoiceoverTask
 
-        # Suppress transformers/safetensors progress bars — they use \r
-        # for in-place updates which renders as garbage in the RichLog
+        # Suppress noisy loggers and progress bars via env vars.
+        # IMPORTANT: Do NOT redirect fd 2 (OS-level stderr) — it is
+        # process-wide and kills Textual's terminal driver, freezing
+        # the entire TUI.  Use env vars to suppress at the source.
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
         os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
-
-        # Capture stderr to prevent HIP/MIOpen warnings from spilling
-        # onto the terminal behind the TUI
-        _original_stderr = sys.stderr
-        sys.stderr = io.StringIO()
+        os.environ["MIOPEN_LOG_LEVEL"] = "4"  # errors only
+        os.environ["ROCBLAS_LAYER"] = "0"
+        os.environ["HSA_TOOLS_LIB"] = ""  # suppress HSA trace
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+        for _name in ("httpx", "httpcore", "google", "urllib3",
+                       "transformers", "diffusers", "torch"):
+            logging.getLogger(_name).setLevel(logging.WARNING)
 
         try:
             task = VoiceoverTask(
@@ -387,18 +581,27 @@ class VoiceoverScreen(Screen):
                 tts_model=tts_model,
                 voice=voice,
                 voice_ref=voice_ref or None,
+                vlm_model=vlm_model,
                 narration_style=style,
-                no_edit=True,  # We handle editing in the TUI
+                no_edit=True,
             )
 
-            # Store voice and capture interval for the auto flow
-            self._voice = voice
-            self._capture_interval = capture_interval
+            # Route task log/progress through the TUI's RichLog
+            task.log_callback = lambda msg: self.app.call_from_thread(self._log, msg)
+            task.progress_callback = lambda cur, tot: (
+                self.app.call_from_thread(
+                    self._update_stage,
+                    f"Generating audio — segment {cur}/{tot}",
+                ),
+                self.app.call_from_thread(self._update_progress, cur, tot),
+            )
+
+            pipeline = VoiceoverPipeline(self, run_id=self._active_run_id)
 
             if mode == "auto":
-                self._run_auto_with_edit(task, video_path, output_path)
+                pipeline.run_auto(task, video_path, output_path, capture_interval)
             elif mode == "revoice":
-                self._run_revoice_with_edit(task, video_path, output_path)
+                pipeline.run_revoice(task, video_path, output_path)
             else:
                 self.app.call_from_thread(self._update_stage, "Running from script...")
                 task.run(
@@ -413,256 +616,44 @@ class VoiceoverScreen(Screen):
                 self.app.call_from_thread(self._on_voiceover_done, None, "Cancelled by user")
 
         except SystemExit as e:
-            # spacy.cli.download calls sys.exit on failure — catch it
-            self.app.call_from_thread(self._on_voiceover_done, None, f"A dependency failed to install (exit code {e.code}). Try rebuilding the Docker image.")
+            self.app.call_from_thread(
+                self._on_voiceover_done,
+                None,
+                f"A dependency failed to install (exit code {e.code}). "
+                f"Try rebuilding the Docker image.",
+            )
         except Exception as e:
-            self.app.call_from_thread(self._on_voiceover_done, None, str(e))
-        finally:
-            # Restore stderr and log any captured warnings
-            captured = sys.stderr.getvalue() if hasattr(sys.stderr, 'getvalue') else ""
-            sys.stderr = _original_stderr
-            if captured.strip():
-                # Filter out transformers progress bars (\r-based updates that
-                # concatenate into long unreadable lines in the RichLog)
-                for line in captured.strip().split("\n")[:10]:
-                    # Skip lines that are just concatenated progress bars
-                    if "Loading weights:" in line and line.count("Loading weights:") > 1:
-                        continue
-                    # Skip carriage-return in-place update fragments
-                    if "\r" in line:
-                        # Take the last \r-delimited fragment (the final state)
-                        line = line.rsplit("\r", 1)[-1].strip()
-                        if not line:
-                            continue
-                    self.app.call_from_thread(self._log, f"[dim]{line}[/dim]")
+            import traceback
 
+            from hftool.utils.errors import HFToolError
+
+            tb = traceback.format_exc()
+            self.app.call_from_thread(self._log, f"[red]{tb}[/red]")
+            if isinstance(e, HFToolError):
+                detail = str(e)
+                if e.suggestion:
+                    detail = f"{detail}\nSuggestion: {e.suggestion}"
+                if e.original_error:
+                    detail = f"{detail}\nDetails: {e.original_error}"
+                self.app.call_from_thread(self._on_voiceover_done, None, detail)
+            else:
+                self.app.call_from_thread(self._on_voiceover_done, None, str(e))
+        finally:
             try:
                 task.cleanup()
             except Exception:
                 pass
 
-    def _run_auto_with_edit(self, task, video_path: str, output_path: str) -> None:
-        """Run auto voiceover with TUI script editing pause."""
-        from hftool.utils.deps import check_ffmpeg
-        from hftool.io.scene_detector import detect_scenes, extract_keyframes
+    # ------------------------------------------------------------------
+    # UI update methods (called on the UI thread via call_from_thread)
+    # ------------------------------------------------------------------
 
-        check_ffmpeg()
-
-        work_dir = os.path.dirname(os.path.abspath(output_path))
-        os.makedirs(work_dir, exist_ok=True)
-
-        # Step 1: Scene detection (or fixed interval)
-        capture_interval = getattr(self, '_capture_interval', 'auto')
-        if capture_interval != "auto":
-            interval_s = float(capture_interval)
-            self.app.call_from_thread(self._update_stage, f"Step 1/6 — Capturing every {interval_s:.0f}s...")
-            self.app.call_from_thread(self._set_progress_indeterminate)
-            # Use fixed intervals instead of scene detection
-            from hftool.io.scene_detector import _fixed_interval_scenes, get_video_duration_ms, SceneDetectionResult, SceneInfo
-            duration_ms = get_video_duration_ms(video_path)
-            intervals = _fixed_interval_scenes(duration_ms, interval_s=interval_s)
-            scenes = SceneDetectionResult(
-                scenes=[SceneInfo(index=i, start_ms=s, end_ms=e) for i, (s, e) in enumerate(intervals)],
-                video_duration_ms=duration_ms,
-                video_path=video_path,
-            )
-        else:
-            self.app.call_from_thread(self._update_stage, "Step 1/6 — Detecting scenes...")
-            self.app.call_from_thread(self._set_progress_indeterminate)
-            scenes = detect_scenes(video_path, threshold=task.scene_threshold)
-        self.app.call_from_thread(self._log, f"  Found {len(scenes.scenes)} scenes")
-
-        if self._cancel_event.is_set():
-            return
-
-        # Step 2: Keyframe extraction
-        self.app.call_from_thread(self._update_stage, "Step 2/6 — Extracting keyframes...")
-        keyframe_dir = os.path.join(work_dir, "voiceover_keyframes")
-        scenes = extract_keyframes(video_path, scenes, keyframe_dir)
-        total_frames = sum(len(s.keyframe_paths) for s in scenes.scenes)
-        self.app.call_from_thread(self._log, f"  Extracted {total_frames} keyframes")
-
-        if self._cancel_event.is_set():
-            return
-
-        # Step 3: VLM analysis (per-frame progress)
-        total_frames = sum(len(s.keyframe_paths) for s in scenes.scenes)
-        self.app.call_from_thread(self._update_stage, f"Step 3/6 — Analyzing frames with VLM (0/{total_frames})...")
-        self.app.call_from_thread(self._update_progress, 0, total_frames)
-        task._load_vlm()
-
-        # Inline the frame analysis loop for per-frame progress
-        from hftool.io.script_generator import FrameAnalysis, FRAME_ANALYSIS_PROMPT, generate_script
-        analyses = []
-        prev_description = ""
-        frame_idx = 0
-        for scene in scenes.scenes:
-            for image_path in scene.keyframe_paths:
-                if self._cancel_event.is_set():
-                    task._unload_vlm()
-                    return
-                prompt = FRAME_ANALYSIS_PROMPT.format(
-                    previous_description=prev_description or "None yet."
-                )
-                description = task._vlm_task.analyze_frame(
-                    image_path, prompt, previous_context=prev_description,
-                )
-                analyses.append(FrameAnalysis(
-                    scene_index=scene.index,
-                    timestamp_ms=scene.start_ms,
-                    image_path=image_path,
-                    description=description,
-                ))
-                prev_description = description
-                frame_idx += 1
-                self.app.call_from_thread(
-                    self._update_stage,
-                    f"Step 3/6 — Analyzing frames with VLM ({frame_idx}/{total_frames})...",
-                )
-                self.app.call_from_thread(self._update_progress, frame_idx, total_frames)
-
-                # Free VRAM between frames — KV cache accumulates
-                try:
-                    import torch
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                except Exception:
-                    pass
-
-        self.app.call_from_thread(self._log, f"  Analyzed {len(analyses)} frames")
-
-        # Aggressively free VRAM before script generation — the frame analysis
-        # loop accumulates KV cache fragments that prevent the large allocation
-        # needed for the script assembly prompt (all 48 descriptions at once)
+    def _scroll_progress_visible(self) -> None:
+        """Scroll the progress section into view after layout refresh."""
         try:
-            import torch, gc
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            self.query_one("#progress-section").scroll_visible(top=True)
         except Exception:
             pass
-
-        if self._cancel_event.is_set():
-            task._unload_vlm()
-            return
-
-        # Step 4: Generate script
-        self.app.call_from_thread(self._update_stage, "Step 4/6 — Generating script...")
-        script = generate_script(
-            task._vlm_task, analyses, scenes,
-            style=task.narration_style,
-            video_duration_ms=scenes.video_duration_ms,
-        )
-        self.app.call_from_thread(self._log, f"  Generated {len(script.segments)} segments")
-
-        # Unload VLM before TTS
-        task._unload_vlm()
-
-        if self._cancel_event.is_set():
-            return
-
-        # Step 5: Pause for script editing
-        self.app.call_from_thread(self._show_script_editor, script)
-        self._script_ready.wait()  # Block until user clicks Continue
-
-        if self._cancel_event.is_set():
-            return
-
-        # Parse edited script
-        if self._edited_script:
-            self.app.call_from_thread(self._log, f"  Applying edited script ({len(self._edited_script)} chars)...")
-            try:
-                import json as _json
-                from hftool.io.script_parser import ScriptData, ScriptSegment
-                raw = _json.loads(self._edited_script)
-                script = ScriptData(segments=[
-                    ScriptSegment(
-                        id=i + 1,
-                        start_ms=int(s.get("start_ms", 0)),
-                        end_ms=int(s.get("end_ms", 0)),
-                        text=s.get("text", ""),
-                    )
-                    for i, s in enumerate(raw)
-                ])
-                self.app.call_from_thread(self._log, f"  Parsed {len(script.segments)} edited segments")
-            except Exception as e:
-                self.app.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
-        else:
-            self.app.call_from_thread(self._log, "  [dim]No edits detected, using generated script[/dim]")
-
-        # Step 6: TTS + merge — clean stale segment cache first
-        self.app.call_from_thread(self._update_stage, "Step 6/6 — Generating voiceover audio...")
-        self.app.call_from_thread(self._hide_editor)
-        self.app.call_from_thread(self._set_progress_indeterminate)
-        self.app.call_from_thread(self._log, f"  Voice: {task.voice}, TTS: {task.tts_model}, Segments: {len(script.segments)}")
-
-        # Remove old segment files so voice/script changes take effect
-        seg_dir = os.path.join(os.path.dirname(os.path.abspath(output_path)), "voiceover_segments")
-        if os.path.isdir(seg_dir):
-            shutil.rmtree(seg_dir, ignore_errors=True)
-
-        task._generate_and_merge(script, output_path, video_path, keep_audio=False)
-
-    def _run_revoice_with_edit(self, task, video_path: str, output_path: str) -> None:
-        """Run re-voice with TUI script editing pause."""
-        from hftool.utils.deps import check_ffmpeg
-
-        check_ffmpeg()
-
-        work_dir = os.path.dirname(os.path.abspath(output_path))
-        os.makedirs(work_dir, exist_ok=True)
-
-        # Step 1: Extract audio
-        self.app.call_from_thread(self._update_stage, "Step 1/4 — Extracting audio...")
-        audio_path = os.path.join(work_dir, "extracted_audio.wav")
-        task._extract_audio(video_path, audio_path)
-
-        if self._cancel_event.is_set():
-            return
-
-        # Step 2: ASR transcription
-        self.app.call_from_thread(self._update_stage, "Step 2/4 — Transcribing audio...")
-        script = task._transcribe_to_script(audio_path)
-        self.app.call_from_thread(self._log, f"  Transcribed {len(script.segments)} segments")
-
-        if self._cancel_event.is_set():
-            return
-
-        # Step 3: Pause for editing
-        self.app.call_from_thread(self._show_script_editor, script)
-        self._script_ready.wait()
-
-        if self._cancel_event.is_set():
-            return
-
-        if self._edited_script:
-            try:
-                import json as _json
-                from hftool.io.script_parser import ScriptData, ScriptSegment
-                raw = _json.loads(self._edited_script)
-                script = ScriptData(segments=[
-                    ScriptSegment(
-                        id=i + 1,
-                        start_ms=int(s.get("start_ms", 0)),
-                        end_ms=int(s.get("end_ms", 0)),
-                        text=s.get("text", ""),
-                    )
-                    for i, s in enumerate(raw)
-                ])
-            except Exception as e:
-                self.app.call_from_thread(self._log, f"[yellow]Script parse error, using original: {e}[/yellow]")
-
-        # Step 4: TTS + merge — clean stale segment cache first
-        self.app.call_from_thread(self._update_stage, "Step 4/4 — Generating voiceover audio...")
-        self.app.call_from_thread(self._hide_editor)
-
-        seg_dir = os.path.join(os.path.dirname(os.path.abspath(output_path)), "voiceover_segments")
-        if os.path.isdir(seg_dir):
-            shutil.rmtree(seg_dir, ignore_errors=True)
-
-        task._generate_and_merge(script, output_path, video_path, keep_audio=False)
-
-    # --- UI update methods (called on UI thread via call_from_thread) ---
 
     def _update_stage(self, text: str) -> None:
         self.query_one("#stage-label", Label).update(f"[bold]{text}[/bold]")
@@ -673,58 +664,45 @@ class VoiceoverScreen(Screen):
     def _set_progress_indeterminate(self) -> None:
         self.query_one("#progress", ProgressBar).update(total=None)
 
-    def _show_script_editor(self, script) -> None:
-        """Show the inline script editor with the generated script."""
-        self._update_stage("Step 5/6 — Review and edit script")
-        self._log("[green]Script ready for editing. Modify below and click Continue.[/green]")
-
-        try:
-            script_json = json.dumps(
-                [{"start_ms": s.start_ms, "end_ms": s.end_ms, "text": s.text}
-                 for s in script.segments],
-                indent=2,
-            )
-        except Exception:
-            script_json = str(script)
-
-        editor = self.query_one("#script-editor", TextArea)
-        editor.load_text(script_json)
-        self.query_one("#editor-section").display = True
-        editor.focus()
-
-    def _hide_editor(self) -> None:
-        self.query_one("#editor-section").display = False
-
-    def _continue_after_edit(self) -> None:
-        """User clicked Continue — unblock the worker thread."""
-        editor = self.query_one("#script-editor", TextArea)
-        self._edited_script = editor.text
-        self._script_ready.set()
-
     def _on_voiceover_done(self, output_path: Optional[str], error: Optional[str]) -> None:
         self._running = False
-        result_panel = self.query_one("#result-panel", Static)
+        finished_run_id = self._active_run_id
+        self._active_run_id = None
+        result_text = self.query_one("#result-text", Static)
+        result_panel = self.query_one("#result-panel")
         self._hide_editor()
 
         if error:
             self.query_one("#stage-label", Label).update("[red]Failed[/red]")
-            self._log(f"[red]Error: {error}[/red]")
-            result_panel.update(f"[red]{error}[/red]")
+            if finished_run_id is not None:
+                self._log(f"[red]Run #{finished_run_id} error: {error}[/red]")
+            else:
+                self._log(f"[red]Error: {error}[/red]")
+            result_text.update(f"[red]{error}[/red]")
             result_panel.add_class("-error")
             result_panel.border_title = "Error"
+            self.query_one("#open-output-btn").display = False
         else:
             self.query_one("#stage-label", Label).update("[green]Complete![/green]")
             self.query_one("#progress", ProgressBar).update(total=100, progress=100)
             size_str = ""
             if output_path and os.path.exists(output_path):
                 size = os.path.getsize(output_path)
-                size_str = f" ({size / (1024*1024):.1f} MB)" if size > 1024*1024 else f" ({size / 1024:.1f} KB)"
-            result_panel.update(f"[bold green]Output:[/bold green] {output_path}{size_str}")
-            self._log(f"[green]Voiceover complete: {output_path}[/green]")
+                size_str = f" ({size / (1024*1024):.1f} MB)" if size > 1024 * 1024 else f" ({size / 1024:.1f} KB)"
+            self._output_path = output_path
+            display_path = output_path
+            if os.environ.get("HFTOOL_IN_DOCKER") and output_path:
+                from hftool.tui.screens.voiceover.path_utils import container_to_host_path
+
+                display_path = container_to_host_path(output_path)
+            result_text.update(f"[bold green]Output:[/bold green] {display_path}{size_str}")
+            self.query_one("#open-output-btn").display = True
+            if finished_run_id is not None:
+                self._log(f"[green]Run #{finished_run_id} complete: {display_path}[/green]")
+            else:
+                self._log(f"[green]Voiceover complete: {display_path}[/green]")
 
         result_panel.display = True
-
-        # Show start button again so user can run another voiceover
         self.query_one("#start-btn").display = True
         self.query_one("#start-btn").label = "Start New Voiceover"
 
@@ -733,11 +711,3 @@ class VoiceoverScreen(Screen):
             self.query_one("#log", RichLog).write(text)
         except Exception:
             pass
-
-    def action_cancel_or_back(self) -> None:
-        if self._running:
-            self._cancel_event.set()
-            self._script_ready.set()
-            self._log("[yellow]Cancelling...[/yellow]")
-        else:
-            self.app.pop_screen()

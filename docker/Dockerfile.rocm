@@ -80,7 +80,9 @@ RUN pip install --no-cache-dir \
     "opencv-python-headless>=4.5.0" \
     "pysrt>=1.1.0" \
     "kokoro>=0.8.0" \
-    "textual>=7.0.0"
+    "textual>=7.0.0" \
+    "openai>=1.0.0" \
+    "google-genai>=1.0.0"
 
 # Kokoro TTS requires spacy en_core_web_sm model (spacy.cli.download calls
 # sys.exit which crashes worker threads, so pre-install it here)

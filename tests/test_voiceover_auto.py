@@ -46,28 +46,28 @@ class TestVoiceoverTaskInit:
 
 
 class TestVoiceoverResolveVLM:
-    """Tests for VoiceoverTask._resolve_vlm_model."""
+    """Tests for VLM model parsing via vlm_providers.parse_vlm_model."""
 
-    def test_resolve_short_name(self):
-        from hftool.tasks.voiceover import VoiceoverTask
+    def test_local_model_returns_none_prefix(self):
+        from hftool.io.vlm_providers import parse_vlm_model
 
-        task = VoiceoverTask()
-        result = task._resolve_vlm_model("qwen3-vl-8b")
-        assert result == "Qwen/Qwen3-VL-8B-Instruct"
+        prefix, model = parse_vlm_model("qwen3-vl-8b")
+        assert prefix is None
+        assert model == "qwen3-vl-8b"
 
-    def test_resolve_repo_id_passthrough(self):
-        from hftool.tasks.voiceover import VoiceoverTask
+    def test_google_prefix_parsed(self):
+        from hftool.io.vlm_providers import parse_vlm_model
 
-        task = VoiceoverTask()
-        result = task._resolve_vlm_model("Qwen/Qwen3-VL-8B-Instruct")
-        assert result == "Qwen/Qwen3-VL-8B-Instruct"
+        prefix, model = parse_vlm_model("google/gemini-2.5-flash")
+        assert prefix == "google"
+        assert model == "gemini-2.5-flash"
 
-    def test_resolve_unknown_passthrough(self):
-        from hftool.tasks.voiceover import VoiceoverTask
+    def test_openai_prefix_parsed(self):
+        from hftool.io.vlm_providers import parse_vlm_model
 
-        task = VoiceoverTask()
-        result = task._resolve_vlm_model("custom/model")
-        assert result == "custom/model"
+        prefix, model = parse_vlm_model("openai/gpt-4o")
+        assert prefix == "openai"
+        assert model == "gpt-4o"
 
 
 class TestVoiceoverExtractAudio:

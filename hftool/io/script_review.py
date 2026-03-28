@@ -109,7 +109,7 @@ def review_script(
     # --- docker mode ---
     if _is_docker():
         target_path = save_path if save_path else os.path.join(work_dir, "generated_script.json")
-        _write_json(script, target_path)
+        _write_json(script, target_path, include_context=True)
         print(f"Script saved to {target_path}. Edit it on your host, then re-run with --script {target_path}")
         try:
             input("Press Enter to continue after editing...")
@@ -123,7 +123,7 @@ def review_script(
 
     # --- interactive mode ---
     temp_path = os.path.join(work_dir, "script_review.json")
-    _write_json(script, temp_path)
+    _write_json(script, temp_path, include_context=True)
 
     success = open_in_editor(temp_path)
     if not success:
@@ -147,12 +147,14 @@ def review_script(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _write_json(script: ScriptData, path: str) -> None:
+def _write_json(script: ScriptData, path: str, include_context: bool = False) -> None:
     """Write *script* as a JSON file to *path*, creating parent dirs as needed.
 
     Args:
         script: Script to serialise.
         path: Destination file path.
+        include_context: If True, include scene context annotations in the
+            output so the reviewer can see what is on screen at each timestamp.
 
     Raises:
         HFToolError: If the file cannot be written.
@@ -160,7 +162,7 @@ def _write_json(script: ScriptData, path: str) -> None:
     try:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(script.to_json())
+            fh.write(script.to_json(include_context=include_context))
     except OSError as exc:
         raise HFToolError(
             f"Cannot write script file: {exc}",
