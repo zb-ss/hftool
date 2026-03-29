@@ -8,6 +8,7 @@ Handles downloading models from HuggingFace Hub with:
 """
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional, Callable, List, Dict
@@ -371,14 +372,33 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, for
         click.echo("  pipx detected but current runtime is not pipx hftool; using pip", err=True)
 
     # Fall back to regular pip via subprocess (more reliable than pip.main)
+    constraints_file = _write_torch_constraints()
     try:
         failed_deps = []
         for dep in dependencies:
             click.echo(f"  Upgrading {dep} via pip...")
             install_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", dep]
+            if constraints_file:
+                install_cmd.extend(["-c", constraints_file])
             if "flash-attn" in dep:
                 install_cmd.append("--no-build-isolation")
             proc = subprocess.run(install_cmd, capture_output=True, text=True)
+
+            # Torch constraint conflict — the package depends on a
+            # different torch version.  Install with --no-deps to avoid
+            # overwriting ROCm PyTorch, then install its non-torch
+            # sub-dependencies separately.
+            if (
+                proc.returncode != 0
+                and constraints_file
+                and "conflicting" in (proc.stderr or "").lower()
+            ):
+                click.echo(
+                    f"    Torch version conflict detected — installing {dep} "
+                    f"without replacing PyTorch...",
+                    err=True,
+                )
+                proc = _install_with_torch_protection(dep, constraints_file)
 
             # Debian/Ubuntu externally-managed Python (PEP 668): retry explicitly.
             if (
@@ -416,6 +436,174 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, for
         click.echo(f"  pip installation failed: {e}", err=True)
         click.echo(f"  Please install manually: pip install --upgrade {' '.join(dependencies)}")
         return False
+    finally:
+        if constraints_file:
+            try:
+                os.remove(constraints_file)
+            except OSError:
+                pass
+
+
+def _write_torch_constraints() -> Optional[str]:
+    """Create a temporary pip constraints file that pins the current PyTorch.
+
+    When installing model dependencies at runtime (e.g., ``chatterbox-tts``),
+    pip may try to replace the existing ROCm PyTorch with a CUDA build from
+    PyPI.  A constraints file tells pip "these packages must stay at their
+    current versions", preventing silent overwrites.
+
+    Returns:
+        Path to the temporary constraints file, or None if torch isn't
+        installed (nothing to protect).
+    """
+    import importlib.metadata
+    import tempfile
+
+    pins: list[str] = []
+    for pkg in ("torch", "torchaudio", "torchvision"):
+        try:
+            version = importlib.metadata.version(pkg)
+            pins.append(f"{pkg}=={version}")
+        except importlib.metadata.PackageNotFoundError:
+            pass
+
+    if not pins:
+        return None
+
+    fd, path = tempfile.mkstemp(prefix="hftool_torch_constraints_", suffix=".txt")
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(pins) + "\n")
+    return path
+
+
+def _install_with_torch_protection(dep: str, constraints_file: str) -> subprocess.CompletedProcess:
+    """Install a package without letting it replace PyTorch.
+
+    Strategy:
+    1. Install the main package with ``--no-deps``
+    2. Read its declared dependencies from package metadata
+    3. Install non-torch dependencies (with constraints to protect PyTorch
+       transitively as well)
+
+    Args:
+        dep: Package spec to install (e.g., "chatterbox-tts")
+        constraints_file: Path to torch constraints file
+
+    Returns:
+        CompletedProcess from the final install step
+    """
+    import importlib.metadata
+
+    # Step 1: install main package without any dependencies
+    nodeps_cmd = [sys.executable, "-m", "pip", "install", "--no-deps", dep]
+    proc = subprocess.run(nodeps_cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return proc
+
+    # Step 2: discover its declared sub-dependencies
+    pkg_name = dep.split("[")[0].split(">=")[0].split("==")[0].split("<")[0].strip()
+    try:
+        requires = importlib.metadata.requires(pkg_name) or []
+    except importlib.metadata.PackageNotFoundError:
+        # Package installed but metadata not found — best effort
+        return proc
+
+    # Step 3: filter out torch ecosystem packages
+    _torch_pkgs = frozenset({
+        "torch", "torchaudio", "torchvision", "triton",
+        "nvidia-cublas-cu12", "nvidia-cuda-cupti-cu12",
+        "nvidia-cuda-nvrtc-cu12", "nvidia-cuda-runtime-cu12",
+        "nvidia-cudnn-cu12", "nvidia-cufft-cu12", "nvidia-curand-cu12",
+        "nvidia-cusolver-cu12", "nvidia-cusparse-cu12",
+        "nvidia-cusparselt-cu12", "nvidia-nccl-cu12",
+        "nvidia-nvjitlink-cu12", "nvidia-nvtx-cu12",
+    })
+
+    safe_deps: list[str] = []
+    for req_str in requires:
+        # Skip extras-conditional deps (e.g., "foo ; extra == 'dev'")
+        if "extra ==" in req_str:
+            continue
+        # Extract bare package name
+        name = req_str.split(";")[0].split("[")[0].split(">=")[0].split("==")[0].split("<")[0].split("!")[0].strip()
+        if name.lower() not in _torch_pkgs and not name.lower().startswith("nvidia-"):
+            safe_deps.append(req_str.split(";")[0].strip())
+
+    if not safe_deps:
+        return proc
+
+    click.echo(f"    Installing {len(safe_deps)} sub-dependencies (torch protected)...")
+
+    _install_deps_recursive(safe_deps, constraints_file, _torch_pkgs, max_rounds=3)
+
+    return proc  # Return success from the main --no-deps install
+
+
+def _install_deps_recursive(
+    deps: list[str],
+    constraints_file: str,
+    protected_pkgs: frozenset,
+    max_rounds: int = 3,
+) -> None:
+    """Install dependencies, chasing transitive deps up to *max_rounds*.
+
+    For each dep:
+    1. Try ``pip install dep -c constraints`` (fast, respects torch pins).
+    2. On conflict, fall back to ``pip install --no-deps dep`` and queue
+       its own sub-deps for the next round.
+
+    Converges in 2-3 rounds for most packages.
+    """
+    import importlib.metadata
+
+    pending = list(deps)
+
+    for round_num in range(max_rounds):
+        if not pending:
+            break
+        next_round: list[str] = []
+
+        for subdep in pending:
+            name = (
+                subdep.split(";")[0].split("[")[0].split(">=")[0]
+                .split("==")[0].split("<")[0].split("!")[0].strip().lower()
+            )
+            if name in protected_pkgs or name.startswith("nvidia-"):
+                continue
+
+            # Already installed?
+            try:
+                importlib.metadata.version(name)
+                continue
+            except importlib.metadata.PackageNotFoundError:
+                pass
+
+            # Try with constraints first
+            sub_cmd = [
+                sys.executable, "-m", "pip", "install",
+                "-c", constraints_file,
+                subdep.split(";")[0].strip(),
+            ]
+            sub_proc = subprocess.run(sub_cmd, capture_output=True, text=True)
+
+            if sub_proc.returncode != 0:
+                # Conflict — install bare, queue its deps
+                retry_cmd = [
+                    sys.executable, "-m", "pip", "install", "--no-deps",
+                    subdep.split(";")[0].strip(),
+                ]
+                subprocess.run(retry_cmd, capture_output=True, text=True)
+
+                # Queue this package's own deps for next round
+                try:
+                    child_reqs = importlib.metadata.requires(name) or []
+                    for cr in child_reqs:
+                        if "extra ==" not in cr:
+                            next_round.append(cr)
+                except importlib.metadata.PackageNotFoundError:
+                    pass
+
+        pending = next_round
 
 
 def download_model_with_progress(

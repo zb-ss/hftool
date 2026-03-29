@@ -134,6 +134,13 @@ class TextToSpeechTask(TextInputMixin, BaseTask):
         from hftool.core.device import configure_rocm_env
         configure_rocm_env()
 
+        # The perth watermarking C extension may fail to compile during
+        # runtime install.  Patch it with the dummy so chatterbox doesn't
+        # crash — watermarking is not needed for voiceover output.
+        import perth
+        if perth.PerthImplicitWatermarker is None:
+            perth.PerthImplicitWatermarker = perth.DummyWatermarker
+
         from chatterbox.tts import ChatterboxTTS
 
         model = ChatterboxTTS.from_pretrained(device=device)

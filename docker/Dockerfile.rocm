@@ -103,8 +103,16 @@ RUN SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])") &
 RUN python -c "from transformers import AutoTokenizer; print('Transformers ready')"
 RUN python -c "from diffusers import DiffusionPipeline; print('Diffusers ready')"
 
-# Create directories for model cache and config
-RUN mkdir -p /root/.cache/huggingface /root/.hftool
+# Create directories for model cache and config.
+# Make them world-writable so the container works when run as non-root.
+RUN mkdir -p /root/.cache/huggingface /root/.hftool \
+    && chmod -R a+rwX /root/.cache /root/.hftool
+
+# Make site-packages dir writable so runtime pip installs (e.g.,
+# chatterbox-tts on first use) work when container runs as non-root.
+# Only the directory needs +w — pip creates new package dirs inside it.
+RUN chmod a+w $(python -c "import site; print(site.getsitepackages()[0])") \
+    && chmod a+w $(python -c "import site; print(site.getsitepackages()[0])")/*.dist-info 2>/dev/null || true
 
 # Set default environment variables
 ENV HFTOOL_MODELS_DIR=/root/.cache/huggingface
