@@ -346,6 +346,8 @@ class VoiceoverScreen(VlmSelectorMixin, ScriptEditorMixin, Screen):
                 yield TextArea(id="script-editor")
                 with Horizontal(id="editor-buttons"):
                     yield Button("Continue", variant="success", id="continue-btn")
+                    yield Button("Save Script", variant="primary", id="save-script-btn")
+                    yield Button("Load Script", variant="default", id="load-script-btn")
                     yield Button("View Keyframes", variant="default", id="open-keyframes-btn")
                     yield Button("Cancel", variant="error", id="cancel-edit-btn")
 
@@ -407,6 +409,10 @@ class VoiceoverScreen(VlmSelectorMixin, ScriptEditorMixin, Screen):
             self._browse_file("voice-ref-input", "Select Voice Reference Audio", [".wav", ".mp3", ".flac", ".ogg"])
         elif bid == "refresh-vlm-models":
             self._refresh_online_models(force_refresh=True)
+        elif bid == "save-script-btn":
+            self._save_script()
+        elif bid == "load-script-btn":
+            self._load_script()
         elif bid == "open-keyframes-btn":
             self._open_keyframe_dir()
         elif bid == "open-output-btn":
@@ -465,6 +471,23 @@ class VoiceoverScreen(VlmSelectorMixin, ScriptEditorMixin, Screen):
         )
 
     # ------------------------------------------------------------------
+    # Cleanup between runs
+    # ------------------------------------------------------------------
+
+    def _cleanup_work_dirs(self, output_path: str) -> None:
+        """Remove cached keyframes and segments from a previous run."""
+        import shutil
+
+        work_dir = os.path.dirname(os.path.abspath(output_path))
+
+        for subdir in ("voiceover_keyframes", "voiceover_segments"):
+            path = os.path.join(work_dir, subdir)
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+
+        self._keyframe_dir = None
+
+    # ------------------------------------------------------------------
     # Form validation → worker launch
     # ------------------------------------------------------------------
 
@@ -512,11 +535,15 @@ class VoiceoverScreen(VlmSelectorMixin, ScriptEditorMixin, Screen):
         self._script_ready = threading.Event()
         self._edited_script = None
         self._cancel_event = threading.Event()
+        self._output_path = None
         self.query_one("#log", RichLog).clear()
         self.query_one("#result-panel").display = False
         self.query_one("#editor-section").display = False
         self.query_one("#stage-label", Label).update("")
         self.query_one("#progress", ProgressBar).update(total=100, progress=0)
+
+        # Clean up cached data from previous run
+        self._cleanup_work_dirs(output_path)
 
         self.query_one("#start-btn").display = False
         self.query_one("#progress-section").display = True

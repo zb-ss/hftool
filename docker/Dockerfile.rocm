@@ -120,6 +120,13 @@ ENV HF_HOME=/root/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 ENV HFTOOL_IN_DOCKER=1
 
+# Suppress noisy C-level GPU warnings that flood the TUI terminal.
+# Must be set before MIOpen/HIP libraries are loaded (too late in Python).
+ENV MIOPEN_LOG_LEVEL=4
+ENV ROCBLAS_LAYER=0
+ENV HIP_TRACE_API=0
+ENV AMD_LOG_LEVEL=1
+
 # Verify ROCm is working
 RUN python -c "import torch; print(f'PyTorch {torch.__version__}'); print(f'ROCm available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')" || echo "GPU check will run at runtime"
 

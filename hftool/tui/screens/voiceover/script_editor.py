@@ -138,3 +138,71 @@ class ScriptEditorMixin:
         editor = self.query_one("#script-editor", TextArea)
         self._edited_script = editor.text
         self._script_ready.set()
+
+    # ------------------------------------------------------------------
+    # Save / Load script
+    # ------------------------------------------------------------------
+
+    def _save_script(self) -> None:
+        """Save the current editor content to a JSON file."""
+        editor = self.query_one("#script-editor", TextArea)
+        script_text = editor.text.strip()
+        if not script_text:
+            self.notify("Nothing to save — script is empty.", severity="warning")
+            return
+
+        # Derive save path next to the output file, or fall back to home/cwd
+        output_val = ""
+        try:
+            from textual.widgets import Input
+            output_val = self.query_one("#output-input", Input).value.strip()
+        except Exception:
+            pass
+
+        if output_val:
+            save_dir = os.path.dirname(os.path.abspath(output_val))
+            base = os.path.splitext(os.path.basename(output_val))[0]
+            save_path = os.path.join(save_dir, f"{base}_script.json")
+        else:
+            save_path = os.path.join(os.getcwd(), "voiceover_script.json")
+
+        try:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            with open(save_path, "w", encoding="utf-8") as f:
+                f.write(script_text)
+
+            display_path = save_path
+            if os.environ.get("HFTOOL_IN_DOCKER"):
+                display_path = container_to_host_path(save_path)
+
+            self.notify(f"Script saved to {display_path}", severity="information", timeout=8)
+            log = self.query_one("#log", RichLog)
+            log.write(f"[green]Script saved:[/green] {display_path}")
+        except Exception as exc:
+            self.notify(f"Save failed: {exc}", severity="error", timeout=8)
+
+    def _load_script(self) -> None:
+        """Load a script JSON file into the editor."""
+        from hftool.tui.widgets.file_browser import FilePickerScreen
+
+        def on_selected(path: str) -> None:
+            if not path:
+                return
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                editor = self.query_one("#script-editor", TextArea)
+                try:
+                    editor.load_text(content)
+                except Exception:
+                    editor.text = content
+                self.notify(f"Loaded {os.path.basename(path)}", severity="information")
+                log = self.query_one("#log", RichLog)
+                log.write(f"[green]Script loaded:[/green] {path}")
+            except Exception as exc:
+                self.notify(f"Load failed: {exc}", severity="error", timeout=8)
+
+        self.app.push_screen(
+            FilePickerScreen(title="Load Script", extensions=[".json", ".srt"]),
+            on_selected,
+        )

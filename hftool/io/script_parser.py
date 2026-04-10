@@ -265,24 +265,34 @@ def parse_json(path: str) -> ScriptData:
     except OSError as e:
         raise HFToolError(f"Cannot read file: {e}")
 
-    if "segments" not in data:
+    # Accept both formats:
+    # - {"segments": [...]}  (canonical JSON format)
+    # - [...]                (editor flat array format)
+    if isinstance(data, list):
+        raw_segments = data
+        metadata = {}
+    elif "segments" in data:
+        raw_segments = data["segments"]
+        metadata = data.get("metadata", {})
+    else:
         raise HFToolError(
             "JSON file missing 'segments' key.",
-            suggestion="The JSON must have a 'segments' array with id, start, end, text fields.",
+            suggestion="The JSON must have a 'segments' array with id, start, end, text fields, "
+                       "or be a flat array of segment objects (as saved from the TUI editor).",
         )
 
-    metadata = data.get("metadata", {})
     metadata["source_format"] = "json"
     metadata["source_file"] = path
 
     segments = []
-    for i, entry in enumerate(data["segments"]):
+    for i, entry in enumerate(raw_segments):
         seg_id = entry.get("id", i + 1)
         text = entry.get("text", "").strip()
 
         if not text:
             continue
 
+        # Support both HH:MM:SS.mmm and short M:SS timestamps
         start_ms = _timestamp_to_ms(entry.get("start", "00:00:00.000"))
         end_ms = _timestamp_to_ms(entry.get("end", "00:00:00.000"))
 
