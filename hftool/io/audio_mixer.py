@@ -144,7 +144,8 @@ def merge_with_video(
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
     if keep_original:
-        # Mix: duck original to 30%, narration at full volume
+        # Mix: duck original to 30%, narration at full volume.
+        # duration=first keeps the full original video audio length.
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path,
@@ -156,12 +157,16 @@ def merge_with_video(
             output_path,
         ]
     else:
-        # Replace: strip original audio, narration only
+        # Replace: strip original audio, pad narration to match video length.
+        # apad adds silence after the narration ends so the video is not
+        # truncated.  -shortest then stops at the video stream end (not the
+        # now-infinite audio pad).
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path,
             "-i", audio_path,
-            "-map", "0:v", "-map", "1:a",
+            "-filter_complex", "[1:a]apad[a]",
+            "-map", "0:v", "-map", "[a]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
             "-shortest",
             output_path,
