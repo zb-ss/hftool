@@ -282,7 +282,11 @@ def check_dependency_satisfied(dep: str) -> bool:
         req = Requirement(dep)
         try:
             installed_version = Version(importlib.metadata.version(req.name))
-            return installed_version in req.specifier
+            # prereleases=True so dev/pre-release builds (e.g. diffusers
+            # "0.38.0.dev0" installed from git main in the Docker image)
+            # satisfy a ">=" spec. Without it, packaging excludes
+            # pre-releases by default and we'd wrongly attempt a reinstall.
+            return req.specifier.contains(installed_version, prereleases=True)
         except importlib.metadata.PackageNotFoundError:
             return False
     except (ImportError, Exception):

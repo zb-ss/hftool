@@ -227,4 +227,4 @@ include = ["hftool*"]
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 # Fallback for Docker builds where there's no .git directory
-fallback_version = "0.10.0"
+fallback_version = "0.10.1"
