@@ -6,8 +6,46 @@ for the voiceover pipeline to generate TTS audio from timed script segments.
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+
+# Caption-markup normalization (opt-in via parse_script(normalize=True)).
+# Display SRTs often carry visual formatting a narrator should not speak aloud:
+# leading enumeration ("1. ", "2) "), bullet markers, markdown emphasis, and
+# spaced em/en dashes used as visual pauses.
+_LIST_PREFIX_RE = re.compile(r"^\s*(?:\d+[.):\]]|[-*•◦▪])\s+")
+_SPACED_DASH_RE = re.compile(r"\s+[—–]\s+")
+_MD_EMPHASIS_RE = re.compile(r"[*_`]{1,3}")
+_WS_RE = re.compile(r"\s{2,}")
+
+
+def normalize_caption_text(text: str) -> str:
+    """Clean caption-style markup so TTS doesn't read it literally.
+
+    Strips leading list/enumeration markers, markdown emphasis characters, and
+    turns spaced em/en dashes into comma pauses. Falls back to the original
+    text if normalization would leave the segment empty.
+
+    Args:
+        text: Raw segment text (may span multiple lines).
+
+    Returns:
+        Speech-friendly text.
+    """
+    cleaned_lines = []
+    for line in text.splitlines():
+        line = _LIST_PREFIX_RE.sub("", line)
+        if line.strip():
+            cleaned_lines.append(line.strip())
+
+    out = " ".join(cleaned_lines)
+    out = _SPACED_DASH_RE.sub(", ", out)  # "page — connects" -> "page, connects"
+    out = _MD_EMPHASIS_RE.sub("", out)     # **bold**, _italic_, `code`
+    out = _WS_RE.sub(" ", out).strip()
+
+    return out or text.strip()
 
 
 @dataclass
@@ -140,11 +178,13 @@ class ScriptData:
         return json.dumps(segments, indent=2, ensure_ascii=False)
 
 
-def parse_script(path: str) -> ScriptData:
+def parse_script(path: str, normalize: bool = False) -> ScriptData:
     """Parse a voiceover script file (auto-detects format by extension).
 
     Args:
         path: Path to SRT or JSON script file
+        normalize: If True, run each segment's text through
+            ``normalize_caption_text`` to strip caption markup before TTS.
 
     Returns:
         Parsed ScriptData
@@ -163,14 +203,20 @@ def parse_script(path: str) -> ScriptData:
     ext = os.path.splitext(path)[1].lower()
 
     if ext == ".srt":
-        return parse_srt(path)
+        data = parse_srt(path)
     elif ext == ".json":
-        return parse_json(path)
+        data = parse_json(path)
     else:
         raise HFToolError(
             f"Unsupported script format: {ext}",
             suggestion="Use .srt or .json format.",
         )
+
+    if normalize:
+        for seg in data.segments:
+            seg.text = normalize_caption_text(seg.text)
+
+    return data
 
 
 def parse_srt(path: str) -> ScriptData:

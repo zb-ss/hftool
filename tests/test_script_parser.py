@@ -331,3 +331,48 @@ class TestValidation:
             ScriptSegment(id=2, start_ms=5000, end_ms=10000, text="Second"),
         ]
         _validate_segments(segments)  # Should not raise
+
+
+class TestNormalizeCaptionText:
+    """Tests for caption-markup normalization (--normalize-script)."""
+
+    def test_strips_leading_enumeration(self):
+        from hftool.io.script_parser import normalize_caption_text
+        assert normalize_caption_text("1. Welcome") == "Welcome"
+        assert normalize_caption_text("2) Click here") == "Click here"
+
+    def test_spaced_dash_becomes_comma(self):
+        from hftool.io.script_parser import normalize_caption_text
+        assert normalize_caption_text("the page — connects") == "the page, connects"
+        assert normalize_caption_text("open – then close") == "open, then close"
+
+    def test_strips_markdown_emphasis(self):
+        from hftool.io.script_parser import normalize_caption_text
+        assert normalize_caption_text("Click the **Login** button") == "Click the Login button"
+
+    def test_preserves_hyphenated_words(self):
+        from hftool.io.script_parser import normalize_caption_text
+        assert normalize_caption_text("a well-known issue") == "a well-known issue"
+
+    def test_empty_after_normalization_falls_back(self):
+        from hftool.io.script_parser import normalize_caption_text
+        # A bare list marker should not collapse to an empty string.
+        assert normalize_caption_text("3.") == "3."
+
+    @_requires_pysrt
+    def test_parse_script_normalize_applies_to_segments(self):
+        from hftool.io.script_parser import parse_script
+
+        srt = (
+            "1\n00:00:00,000 --> 00:00:02,000\n1. Welcome — to the demo\n\n"
+            "2\n00:00:02,000 --> 00:00:04,000\nClick the **Start** button\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".srt", delete=False, encoding="utf-8") as f:
+            f.write(srt)
+            path = f.name
+        try:
+            data = parse_script(path, normalize=True)
+            assert data.segments[0].text == "Welcome, to the demo"
+            assert data.segments[1].text == "Click the Start button"
+        finally:
+            os.unlink(path)

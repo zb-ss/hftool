@@ -79,6 +79,14 @@ if not _debug_mode:
             _lib_logger.addHandler(_file_handler)
         # Add null handler to prevent "No handler found" warnings
         _lib_logger.addHandler(logging.NullHandler())
+        # Stop records bubbling to the root logger's default stderr handler.
+        # Otherwise transformers' import-time "None of PyTorch ... were found,
+        # Models won't be available" record prints on every host CLI call in a
+        # torch-less venv (e.g. the pipx wrapper used for `hftool docker run`).
+        _lib_logger.propagate = False
+
+    # Advisory warning shown by transformers when no DL backend is installed.
+    os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
 
     # Set environment variables to suppress library-specific console output
     # These are checked by diffusers/transformers before printing warnings

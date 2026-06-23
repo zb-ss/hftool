@@ -275,12 +275,12 @@ def docker_run(ctx: click.Context, gpu: Optional[str], hftool_args: tuple):
     # Parse GPU selection
     gpu_indices = None
     if gpu:
-        # Explicit GPU specified via --gpu
+        # Explicit GPU specified via --gpu (or HFTOOL_GPU env var)
         gpu_indices = parse_gpu_arg(gpu, hw.platform)
-    elif hw.platform == GPUPlatform.ROCM and sys.stdin.isatty():
-        # Interactive mode: offer GPU selection if multiple AMD GPUs
+    elif hw.platform == GPUPlatform.ROCM:
         gpus = list_amd_gpus()
-        if len(gpus) > 1:
+        if sys.stdin.isatty() and len(gpus) > 1:
+            # Interactive terminal with multiple AMD GPUs: offer a picker
             gpu_indices = interactive_gpu_select(hw.platform)
             if gpu_indices is None:
                 # User cancelled
@@ -288,9 +288,17 @@ def docker_run(ctx: click.Context, gpu: Optional[str], hftool_args: tuple):
         elif len(gpus) == 1:
             # Single GPU - use it
             gpu_indices = [gpus[0].index]
+        elif len(gpus) > 1:
+            # Headless/CI with multiple GPUs and no selection: never block on a
+            # prompt — auto-pick the best non-display GPU instead.
+            gpu_indices = parse_gpu_arg("auto", hw.platform)
 
-    # Combine explicit args and context args
-    args = list(hftool_args) + list(ctx.args)
+    # Combine explicit args, context args, and any args after `--` (which the
+    # top-level group strips out of sys.argv into ctx.obj["extra_args"] before
+    # Click parses). Without this last source, `hftool docker run -- voiceover
+    # ...` would lose everything after `--` and fall back to the help screen.
+    extra_args = list(ctx.obj.get("extra_args", ())) if ctx.obj else []
+    args = list(hftool_args) + list(ctx.args) + extra_args
     if not args:
         args = ["--help"]
 

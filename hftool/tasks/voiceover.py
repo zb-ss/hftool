@@ -382,6 +382,7 @@ class VoiceoverTask:
         output_path: str,
         video_path: Optional[str] = None,
         keep_audio: bool = False,
+        normalize_script: bool = False,
     ) -> str:
         """Entry Point C: Run voiceover from a manual script file.
 
@@ -390,12 +391,14 @@ class VoiceoverTask:
             output_path: Path for final output (WAV if audio-only, MP4 if video)
             video_path: Optional path to input video (for video+audio output)
             keep_audio: If True, duck original video audio instead of stripping
+            normalize_script: If True, strip caption markup (leading "N. ",
+                bullets, markdown, spaced em/en dashes) before TTS.
 
         Returns:
             Path to the output file
         """
         self._log("[bold]Step 1:[/bold] Parsing script...")
-        script = parse_script(script_path)
+        script = parse_script(script_path, normalize=normalize_script)
         self._log(f"  Loaded {len(script.segments)} segments ({script.total_duration_s:.0f}s total)")
 
         return self._generate_and_merge(script, output_path, video_path, keep_audio)

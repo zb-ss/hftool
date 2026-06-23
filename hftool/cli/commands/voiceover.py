@@ -14,6 +14,8 @@ import click
 @click.option("--output", "-o", required=True, help="Output file path (.mp4 with --video, .wav without)")
 @click.option("--tts-model", default="kokoro", help="TTS model: kokoro (default), chatterbox")
 @click.option("--keep-audio", is_flag=True, help="Duck original video audio instead of stripping")
+@click.option("--normalize-script", is_flag=True,
+              help="Strip caption markup (leading 'N. ', bullets, markdown, spaced em/en dashes) before TTS")
 @click.option("--segments-dir", default=None, help="Directory to store/find segment WAV files")
 @click.option("--voice-ref", default=None, help="Reference audio for voice cloning (Chatterbox only)")
 @click.option("--exaggeration", type=float, default=0.4, help="Emotion control for Chatterbox (default: 0.4)")
@@ -36,6 +38,7 @@ def voiceover_command(
     output: str,
     tts_model: str,
     keep_audio: bool,
+    normalize_script: bool,
     segments_dir: Optional[str],
     voice_ref: Optional[str],
     exaggeration: float,
@@ -141,6 +144,7 @@ def voiceover_command(
                 output_path=output,
                 video_path=video,
                 keep_audio=keep_audio,
+                normalize_script=normalize_script,
             )
     except Exception as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)

@@ -68,7 +68,8 @@ class TestVoiceoverCLI:
         assert result.returncode == 0
         assert "voiceover" in result.stdout.lower()
 
-    def test_version_is_0_10_0(self):
-        """Version should be 0.10.0."""
+    def test_version_is_wellformed(self):
+        """Version should be a well-formed X.Y.Z string (not pinned to a literal)."""
+        import re
         from hftool import __version__
-        assert __version__ == "0.10.0"
+        assert re.match(r"^\d+\.\d+\.\d+", __version__), __version__

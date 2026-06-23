@@ -554,6 +554,7 @@ def get_docker_run_command(
     gpu_indices: Optional[List[int]] = None,
     mount_home: bool = True,
     output_volume: Optional[str] = None,
+    tty: Optional[bool] = None,
 ) -> List[str]:
     """Build the docker run command for the detected hardware.
 
@@ -566,6 +567,9 @@ def get_docker_run_command(
         gpu_indices: Specific GPU indices to use (None = all GPUs)
         mount_home: Mount user's home directory for file browsing (default: True)
         output_volume: Volume mount for output directory (from process_docker_args)
+        tty: Allocate a pseudo-TTY (``docker run -t``). When None (default),
+            auto-detected from whether stdin/stdout are TTYs so headless/CI
+            invocations don't fail with "the input device is not a TTY".
 
     Returns:
         List of command arguments for subprocess
@@ -585,7 +589,14 @@ def get_docker_run_command(
     if models_dir:
         models_dir = os.path.expanduser(models_dir)
 
-    cmd = ["docker", "run", "--rm", "-it"]
+    # Decide on TTY allocation. An interactive terminal gets "-it" (keeps the
+    # rich progress UI and lets the wizard read input); a headless/CI run gets
+    # "-i" only, because "-t" without a real TTY makes Docker abort with
+    # "the input device is not a TTY". stdin is still attached so piped input
+    # works either way.
+    if tty is None:
+        tty = sys.stdin.isatty() and sys.stdout.isatty()
+    cmd = ["docker", "run", "--rm", "-it"] if tty else ["docker", "run", "--rm", "-i"]
 
     # Run as current user to avoid permission issues with created files
     # This ensures output files are owned by the host user, not root
@@ -844,6 +855,7 @@ def run_in_docker(
     hardware: Optional[HardwareInfo] = None,
     auto_setup: bool = True,
     gpu_indices: Optional[List[int]] = None,
+    tty: Optional[bool] = None,
 ) -> Tuple[int, Optional[str]]:
     """Run hftool command in Docker container.
 
@@ -852,6 +864,7 @@ def run_in_docker(
         hardware: Pre-detected hardware (will detect if None)
         auto_setup: Automatically build/pull image if missing
         gpu_indices: Specific GPU indices to use (None = all GPUs)
+        tty: Force/forbid TTY allocation (None = auto-detect from the terminal)
 
     Returns:
         Tuple of (exit_code, host_output_path_or_None)
@@ -896,6 +909,7 @@ def run_in_docker(
         processed_args,
         gpu_indices=gpu_indices,
         output_volume=output_volume,
+        tty=tty,
     )
 
     try:

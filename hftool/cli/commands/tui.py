@@ -99,5 +99,6 @@ def _run_docker_tui(gpu: str | None):
 
     # Launch TUI inside Docker — pass "tui --native" so the container
     # doesn't try to nest another Docker layer
-    exit_code, _ = run_in_docker(["tui", "--native"], hw, gpu_indices=gpu_indices)
+    # The TUI is a full-screen Textual app — it always needs a pseudo-TTY.
+    exit_code, _ = run_in_docker(["tui", "--native"], hw, gpu_indices=gpu_indices, tty=True)
     raise SystemExit(exit_code)
