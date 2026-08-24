@@ -1,0 +1,778 @@
+# hftool packaged model catalog. Do not load catalog data from remote sources.
+[catalog]
+version = 1
+verified = "2026-08-23"
+
+[runtime.gpu_selection]
+safety_reserve_gb = 2.0
+display_penalty_gb = 4.0
+
+[tasks."text-to-image".models."z-image-turbo"]
+repo_id = "Tongyi-MAI/Z-Image-Turbo"
+revision = "f332072aa78be7aecdf3ee76d5c247082da564a6"
+name = "Z-Image Turbo"
+model_type = "diffusers"
+size_gb = 32.9
+default = true
+description = "Fast, high-quality general image generation in 8 steps"
+status = "recommended"
+license = "Apache-2.0"
+commercial_use = true
+min_vram_gb = 16.0
+recommended_vram_gb = 18.0
+dtype = "bfloat16"
+pipeline_class = "ZImagePipeline"
+use_case = "general default"
+dependencies = ["diffusers>=0.40.0"]
+
+[tasks."text-to-image".models."z-image-turbo".inference]
+num_inference_steps = 8
+guidance_scale = 0.0
+height = 1024
+width = 1024
+
+[tasks."text-to-image".models."z-image"]
+repo_id = "Tongyi-MAI/Z-Image"
+revision = "04cc4abb7c5069926f75c9bfde9ef43d49423021"
+name = "Z-Image"
+model_type = "diffusers"
+size_gb = 20.5
+default = false
+description = "Undistilled image foundation model with CFG and negative prompting"
+status = "standard"
+license = "Apache-2.0"
+commercial_use = true
+min_vram_gb = 16.0
+recommended_vram_gb = 18.0
+dtype = "bfloat16"
+pipeline_class = "ZImagePipeline"
+use_case = "creative control and fine-tuning"
+dependencies = ["diffusers>=0.40.0"]
+
+[tasks."text-to-image".models."z-image".inference]
+num_inference_steps = 50
+guidance_scale = 4.0
+cfg_normalization = false
+height = 1024
+width = 1024
+
+[tasks."text-to-image".models."sdxl"]
+repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+name = "Stable Diffusion XL"
+model_type = "diffusers"
+size_gb = 6.5
+default = false
+description = "Legacy ecosystem option for SDXL LoRAs and tooling"
+status = "legacy"
+license = "CreativeML Open RAIL++-M"
+commercial_use = true
+min_vram_gb = 8.0
+recommended_vram_gb = 12.0
+dtype = "float16"
+pipeline_class = "StableDiffusionXLPipeline"
+use_case = "legacy LoRA compatibility"
+
+[tasks."text-to-image".models."sdxl".inference]
+num_inference_steps = 30
+guidance_scale = 7.5
+height = 1024
+width = 1024
+
+[tasks."text-to-image".models."flux-schnell"]
+repo_id = "black-forest-labs/FLUX.1-schnell"
+name = "FLUX.1 Schnell"
+model_type = "diffusers"
+size_gb = 23.0
+default = false
+description = "Legacy FLUX.1 ecosystem option for fast 4-step generation"
+status = "legacy"
+license = "Apache-2.0"
+commercial_use = true
+min_vram_gb = 24.0
+recommended_vram_gb = 28.0
+dtype = "bfloat16"
+pipeline_class = "FluxPipeline"
+use_case = "legacy FLUX.1 LoRAs"
+
+[tasks."text-to-image".models."flux-schnell".inference]
+num_inference_steps = 4
+guidance_scale = 0.0
+height = 1024
+width = 1024
+
+[tasks."text-to-image".models."flux-dev"]
+repo_id = "black-forest-labs/FLUX.1-dev"
+name = "FLUX.1 Dev"
+model_type = "diffusers"
+size_gb = 23.0
+default = false
+description = "Legacy gated FLUX.1 quality model and LoRA base"
+status = "legacy"
+license = "FLUX.1-dev Non-Commercial"
+commercial_use = false
+gated = true
+min_vram_gb = 24.0
+recommended_vram_gb = 28.0
+dtype = "bfloat16"
+pipeline_class = "FluxPipeline"
+use_case = "legacy non-commercial LoRAs"
+
+[tasks."text-to-image".models."flux-dev".inference]
+num_inference_steps = 28
+guidance_scale = 3.5
+height = 1024
+width = 1024
+
+[tasks."text-to-image".models."qwen-image-2512"]
+repo_id = "Qwen/Qwen-Image-2512"
+revision = "25468b98e3276ca6700de15c6628e51b7de54a26"
+name = "Qwen Image 2512"
+model_type = "diffusers"
+size_gb = 57.7
+default = false
+description = "Quality baseline for people, detail, composition, and rendered text"
+status = "recommended"
+license = "Apache-2.0"
+commercial_use = true
+min_vram_gb = 24.0
+recommended_vram_gb = 32.0
+dtype = "bfloat16"
+pipeline_class = "QwenImagePipeline"
+use_case = "typography and cover quality"
+dependencies = ["diffusers>=0.40.0", "transformers>=4.45.0"]
+
+[tasks."text-to-image".models."qwen-image-2512".inference]
+num_inference_steps = 50
+guidance_scale = 0.0
+true_cfg_scale = 4.0
+height = 1328
+width = 1328
+
+[tasks."text-to-image".models."flux2-klein-4b"]
+repo_id = "black-forest-labs/FLUX.2-klein-4B"
+revision = "e7b7dc27f91deacad38e78976d1f2b499d76a294"
+name = "FLUX.2 Klein 4B"
+model_type = "diffusers"
+size_gb = 23.7
+default = false
+description = "Low-step unified generation and editing for consumer GPUs"
+status = "recommended"
+license = "Apache-2.0"
+commercial_use = true
+min_vram_gb = 13.0
+recommended_vram_gb = 16.0
+dtype = "bfloat16"
+pipeline_class = "Flux2KleinPipeline"
+use_case = "interactive generation"
+dependencies = ["diffusers>=0.40.0"]
+
+[tasks."text-to-image".models."flux2-klein-4b".inference]
+num_inference_steps = 4
+guidance_scale = 1.0
+height = 1024
+width = 1024
+
+[tasks."text-to-image".models."sana-sprint-1.6b"]
+repo_id = "Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers"
+revision = "19683c58b7ea290e55cedd8950ae1d86ada7ef96"
+name = "SANA Sprint 1.6B"
+model_type = "diffusers"
+size_gb = 9.74
+default = false
+description = "Ultra-fast 1-4 step draft and background generation"
+status = "recommended"
+license = "Apache-2.0 + Gemma Terms"
+commercial_use = true
+min_vram_gb = 10.0
+recommended_vram_gb = 12.0
+dtype = "bfloat16"
+pipeline_class = "SanaSprintPipeline"
+use_case = "fast drafts and backgrounds"
+dependencies = ["diffusers>=0.40.0", "transformers>=4.45.0"]
+
+[tasks."text-to-image".models."sana-sprint-1.6b".inference]
+num_inference_steps = 2
+guidance_scale = 0.0
+height = 1024
+width = 1024
+
+[tasks."text-to-image".models."qwen-image-2512-lightning"]
+repo_id = "Qwen/Qwen-Image-2512"
+revision = "25468b98e3276ca6700de15c6628e51b7de54a26"
+name = "Qwen Image 2512 Lightning (4-step BF16)"
+model_type = "diffusers"
+size_gb = 57.7
+default = false
+description = "Qwen Image 2512 with its official four-step Lightning LoRA profile"
+status = "recommended"
+profile = "adapter"
+license = "Apache-2.0"
+commercial_use = true
+min_vram_gb = 24.0
+recommended_vram_gb = 32.0
+dtype = "bfloat16"
+pipeline_class = "QwenImagePipeline"
+use_case = "fast typography and cover drafts"
+dependencies = ["diffusers>=0.40.0", "transformers>=4.45.0", "peft>=0.13.0"]
+
+[tasks."text-to-image".models."qwen-image-2512-lightning".inference]
+num_inference_steps = 4
+guidance_scale = 0.0
+true_cfg_scale = 1.0
+height = 1328
+width = 1328
+
+[tasks."text-to-image".models."qwen-image-2512-lightning".adapter]
+repo_id = "lightx2v/Qwen-Image-2512-Lightning"
+revision = "a52649c9d0f6e1a248bff13f0df33bb8a2abdb52"
+weight_name = "Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors"
+size_gb = 0.85
+scale = 1.0
+
+[tasks."text-to-image".models."qwen-image-2512-lightning".adapter.scheduler]
+class_name = "FlowMatchEulerDiscreteScheduler"
+base_image_seq_len = 256
+base_shift = 1.0986122886681098
+invert_sigmas = false
+max_image_seq_len = 8192
+max_shift = 1.0986122886681098
+num_train_timesteps = 1000
+shift = 1.0
+stochastic_sampling = false
+time_shift_type = "exponential"
+use_beta_sigmas = false
+use_dynamic_shifting = true
+use_exponential_sigmas = false
+use_karras_sigmas = false
+
+[tasks."image-to-image".models."qwen-image-edit"]
+repo_id = "Qwen/Qwen-Image-Edit-2511"
+revision = "6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9"
+name = "Qwen Image Edit"
+model_type = "diffusers"
+size_gb = 57.0
+default = true
+description = "Qwen image editing with character consistency and multi-image support"
+status = "recommended"
+license = "Apache-2.0"
+commercial_use = true
+min_vram_gb = 24.0
+recommended_vram_gb = 32.0
+dtype = "bfloat16"
+use_case = "quality editing"
+dependencies = ["diffusers>=0.40.0", "transformers>=4.45.0"]
+pipeline_class = "QwenImageEditPlusPipeline"
+
+[tasks."image-to-image".models."qwen-image-edit".inference]
+num_inference_steps = 40
+guidance_scale = 1.0
+true_cfg_scale = 4.0
+negative_prompt = " "
+
+[tasks."image-to-image".models."flux2-klein-4b"]
+repo_id = "black-forest-labs/FLUX.2-klein-4B"
+revision = "e7b7dc27f91deacad38e78976d1f2b499d76a294"
+name = "FLUX.2 Klein 4B"
+model_type = "diffusers"
+size_gb = 23.7
+default = false
+description = "Commercial-friendly multi-reference editing on consumer GPUs"
+status = "recommended"
+license = "Apache-2.0"
+commercial_use = true
+min_vram_gb = 13.0
+recommended_vram_gb = 16.0
+dtype = "bfloat16"
+pipeline_class = "Flux2KleinPipeline"
+use_case = "interactive editing"
+dependencies = ["diffusers>=0.40.0"]
+
+[tasks."image-to-image".models."flux2-klein-4b".inference]
+num_inference_steps = 4
+guidance_scale = 1.0
+height = 1024
+width = 1024
+
+[tasks."image-to-image".models."flux2-klein-9b"]
+repo_id = "black-forest-labs/FLUX.2-klein-9B"
+revision = "92196c8e11f7b6cf2b7493e037d8c5345c559216"
+name = "FLUX.2 Klein 9B"
+model_type = "diffusers"
+size_gb = 29.0
+default = false
+description = "Gated non-commercial FLUX.2 generation and multi-reference editing"
+status = "standard"
+license = "FLUX Non-Commercial"
+commercial_use = false
+min_vram_gb = 29.0
+recommended_vram_gb = 32.0
+dtype = "bfloat16"
+use_case = "non-commercial quality editing"
+dependencies = ["diffusers>=0.40.0"]
+gated = true
+aliases = ["flux2-klein"]
+pipeline_class = "Flux2KleinPipeline"
+
+[tasks."image-to-image".models."flux2-klein-9b".inference]
+num_inference_steps = 4
+guidance_scale = 1.0
+
+[tasks."image-to-image".models."sdxl-refiner"]
+repo_id = "stabilityai/stable-diffusion-xl-refiner-1.0"
+name = "SDXL Refiner"
+model_type = "diffusers"
+size_gb = 6.2
+default = false
+description = "SDXL refiner for img2img enhancement and style transfer"
+status = "legacy"
+license = "CreativeML Open RAIL++-M"
+commercial_use = true
+min_vram_gb = 8.0
+recommended_vram_gb = 12.0
+dtype = "float16"
+use_case = "legacy SDXL refinement"
+
+[tasks."image-to-image".models."sdxl-refiner".inference]
+num_inference_steps = 30
+strength = 0.3
+guidance_scale = 7.5
+
+[tasks."image-to-image".models."sdxl"]
+repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+name = "SDXL Base (img2img)"
+model_type = "diffusers"
+size_gb = 6.5
+default = false
+description = "SDXL base model for stronger style transfer"
+status = "legacy"
+license = "CreativeML Open RAIL++-M"
+commercial_use = true
+min_vram_gb = 8.0
+recommended_vram_gb = 12.0
+dtype = "float16"
+use_case = "legacy SDXL LoRAs"
+
+[tasks."image-to-image".models."sdxl".inference]
+num_inference_steps = 30
+strength = 0.7
+guidance_scale = 7.5
+
+[tasks."text-to-video".models."hunyuanvideo-1.5-480p"]
+repo_id = "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v"
+name = "HunyuanVideo 1.5 (480p)"
+model_type = "diffusers"
+size_gb = 25.0
+default = true
+description = "High-quality text-to-video (480p)"
+status = "standard"
+
+[tasks."text-to-video".models."hunyuanvideo-1.5-720p"]
+repo_id = "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-720p_t2v"
+name = "HunyuanVideo 1.5 (720p)"
+model_type = "diffusers"
+size_gb = 25.0
+default = false
+description = "High-quality text-to-video (720p)"
+status = "standard"
+
+[tasks."text-to-video".models."cogvideox-5b"]
+repo_id = "THUDM/CogVideoX-5b"
+name = "CogVideoX 5B"
+model_type = "diffusers"
+size_gb = 20.0
+default = false
+description = "CogVideo text-to-video model"
+status = "standard"
+
+[tasks."text-to-video".models."wan2.1-1.3b"]
+repo_id = "Wan-AI/Wan2.1-T2V-1.3B"
+name = "Wan 2.1 (1.3B)"
+model_type = "diffusers"
+size_gb = 5.0
+default = false
+description = "Lightweight text-to-video model"
+status = "standard"
+
+[tasks."text-to-video".models."wan2.1-14b"]
+repo_id = "Wan-AI/Wan2.1-T2V-14B"
+name = "Wan 2.1 (14B)"
+model_type = "diffusers"
+size_gb = 28.0
+default = false
+description = "High-quality Wan text-to-video model"
+status = "standard"
+
+[tasks."text-to-video".models."wan2.2-14b"]
+repo_id = "Wan-AI/Wan2.2-T2V-A14B-Diffusers"
+name = "Wan 2.2 (A14B MoE)"
+model_type = "diffusers"
+size_gb = 55.0
+default = false
+description = "Wan 2.2 MoE text-to-video (27B total, 14B active)"
+status = "standard"
+dependencies = ["ftfy>=6.0.0"]
+
+[tasks."text-to-video".models."wan2.2-14b".inference]
+num_inference_steps = 50
+guidance_scale = 5.0
+
+[tasks."text-to-video".models."wan2.2-5b"]
+repo_id = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
+name = "Wan 2.2 TI2V (5B)"
+model_type = "diffusers"
+size_gb = 12.0
+default = false
+description = "Wan 2.2 efficient T2V+I2V model (720P@24fps)"
+status = "standard"
+dependencies = ["ftfy>=6.0.0"]
+
+[tasks."text-to-video".models."wan2.2-5b".inference]
+num_inference_steps = 50
+guidance_scale = 5.0
+
+[tasks."text-to-video".models."ltx2"]
+repo_id = "Lightricks/LTX-2"
+name = "LTX-2"
+model_type = "diffusers"
+size_gb = 40.0
+default = false
+description = "LTX-2 video generation model (requires diffusers main branch)"
+status = "standard"
+dependencies = ["git+https://github.com/huggingface/diffusers"]
+
+[tasks."text-to-video".models."ltx2".inference]
+num_inference_steps = 50
+guidance_scale = 3.0
+num_frames = 97
+height = 512
+width = 768
+
+[tasks."image-to-video".models."hunyuanvideo-1.5-480p-i2v"]
+repo_id = "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_i2v"
+name = "HunyuanVideo 1.5 I2V (480p)"
+model_type = "diffusers"
+size_gb = 25.0
+default = true
+description = "Image-to-video generation (480p)"
+status = "standard"
+
+[tasks."image-to-video".models."cogvideox-5b-i2v"]
+repo_id = "THUDM/CogVideoX-5b-I2V"
+name = "CogVideoX 5B I2V"
+model_type = "diffusers"
+size_gb = 20.0
+default = false
+description = "CogVideo image-to-video model"
+status = "standard"
+
+[tasks."image-to-video".models."wan2.2-14b-i2v"]
+repo_id = "Wan-AI/Wan2.2-I2V-A14B-Diffusers"
+name = "Wan 2.2 I2V (A14B MoE)"
+model_type = "diffusers"
+size_gb = 55.0
+default = false
+description = "Wan 2.2 MoE image-to-video (27B total, 14B active)"
+status = "standard"
+dependencies = ["ftfy>=6.0.0"]
+
+[tasks."image-to-video".models."wan2.2-14b-i2v".inference]
+num_inference_steps = 50
+guidance_scale = 5.0
+
+[tasks."image-to-video".models."wan2.2-5b-i2v"]
+repo_id = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
+name = "Wan 2.2 TI2V (5B) I2V"
+model_type = "diffusers"
+size_gb = 12.0
+default = false
+description = "Wan 2.2 efficient I2V model (720P@24fps)"
+status = "standard"
+dependencies = ["ftfy>=6.0.0"]
+
+[tasks."image-to-video".models."wan2.2-5b-i2v".inference]
+num_inference_steps = 50
+guidance_scale = 5.0
+
+[tasks."image-to-video".models."ltx2-i2v"]
+repo_id = "Lightricks/LTX-2"
+name = "LTX-2 I2V"
+model_type = "diffusers"
+size_gb = 40.0
+default = false
+description = "LTX-2 image-to-video (requires diffusers main branch)"
+status = "standard"
+dependencies = ["git+https://github.com/huggingface/diffusers"]
+
+[tasks."image-to-video".models."ltx2-i2v".inference]
+num_inference_steps = 50
+guidance_scale = 3.0
+num_frames = 97
+height = 512
+width = 768
+
+[tasks."text-to-speech".models."kokoro"]
+repo_id = "hexgrad/Kokoro-82M"
+name = "Kokoro 82M"
+model_type = "custom"
+size_gb = 0.3
+default = true
+description = "Fast lightweight TTS (82M params, CPU-capable, Apache 2.0)"
+status = "standard"
+dependencies = ["kokoro>=0.8.0"]
+
+[tasks."text-to-speech".models."kokoro".inference]
+sample_rate = 24000
+
+[tasks."text-to-speech".models."chatterbox"]
+repo_id = "ResembleAI/chatterbox"
+name = "Chatterbox TTS"
+model_type = "custom"
+size_gb = 2.0
+default = false
+description = "Voice-cloning TTS with emotion control (0.5B, MIT)"
+status = "standard"
+dependencies = ["chatterbox-tts"]
+
+[tasks."text-to-speech".models."chatterbox".inference]
+sample_rate = 24000
+exaggeration = 0.4
+cfg_weight = 0.5
+temperature = 0.7
+
+[tasks."text-to-speech".models."bark-small"]
+repo_id = "suno/bark-small"
+name = "Bark Small"
+model_type = "transformers"
+size_gb = 1.5
+default = false
+description = "Suno Bark TTS (small, fast)"
+status = "standard"
+
+[tasks."text-to-speech".models."bark"]
+repo_id = "suno/bark"
+name = "Bark"
+model_type = "transformers"
+size_gb = 5.0
+default = false
+description = "Suno Bark TTS (full quality)"
+status = "standard"
+
+[tasks."text-to-speech".models."mms-tts-eng"]
+repo_id = "facebook/mms-tts-eng"
+name = "MMS-TTS English"
+model_type = "transformers"
+size_gb = 0.3
+default = false
+description = "Facebook's multilingual TTS (English, lightweight)"
+status = "standard"
+
+[tasks."automatic-speech-recognition".models."whisper-large-v3"]
+repo_id = "openai/whisper-large-v3"
+name = "Whisper Large v3"
+model_type = "transformers"
+size_gb = 3.1
+default = true
+description = "OpenAI Whisper large (best quality)"
+status = "standard"
+
+[tasks."automatic-speech-recognition".models."whisper-large-v3-turbo"]
+repo_id = "openai/whisper-large-v3-turbo"
+name = "Whisper Large v3 Turbo"
+model_type = "transformers"
+size_gb = 1.6
+default = false
+description = "Fast Whisper large variant"
+status = "standard"
+
+[tasks."automatic-speech-recognition".models."whisper-medium"]
+repo_id = "openai/whisper-medium"
+name = "Whisper Medium"
+model_type = "transformers"
+size_gb = 1.5
+default = false
+description = "OpenAI Whisper medium (balanced)"
+status = "standard"
+
+[tasks."automatic-speech-recognition".models."whisper-small"]
+repo_id = "openai/whisper-small"
+name = "Whisper Small"
+model_type = "transformers"
+size_gb = 0.5
+default = false
+description = "OpenAI Whisper small (fast)"
+status = "standard"
+
+[tasks."automatic-speech-recognition".models."whisper-base"]
+repo_id = "openai/whisper-base"
+name = "Whisper Base"
+model_type = "transformers"
+size_gb = 0.15
+default = false
+description = "OpenAI Whisper base (lightweight)"
+status = "standard"
+
+[tasks."text-generation".models."llama-3.2-1b"]
+repo_id = "meta-llama/Llama-3.2-1B-Instruct"
+name = "Llama 3.2 (1B)"
+model_type = "transformers"
+size_gb = 2.5
+default = true
+description = "Meta Llama 3.2 1B instruction-tuned"
+status = "standard"
+
+[tasks."text-generation".models."llama-3.2-3b"]
+repo_id = "meta-llama/Llama-3.2-3B-Instruct"
+name = "Llama 3.2 (3B)"
+model_type = "transformers"
+size_gb = 6.5
+default = false
+description = "Meta Llama 3.2 3B instruction-tuned"
+status = "standard"
+
+[tasks."text-generation".models."mistral-7b"]
+repo_id = "mistralai/Mistral-7B-Instruct-v0.3"
+name = "Mistral 7B"
+model_type = "transformers"
+size_gb = 14.0
+default = false
+description = "Mistral 7B instruction-tuned"
+status = "standard"
+
+[tasks."text-generation".models."qwen2.5-0.5b"]
+repo_id = "Qwen/Qwen2.5-0.5B-Instruct"
+name = "Qwen 2.5 (0.5B)"
+model_type = "transformers"
+size_gb = 1.0
+default = false
+description = "Qwen 2.5 0.5B instruction-tuned"
+status = "standard"
+
+[tasks."text-classification".models."distilbert-sst2"]
+repo_id = "distilbert-base-uncased-finetuned-sst-2-english"
+name = "DistilBERT SST-2"
+model_type = "transformers"
+size_gb = 0.27
+default = true
+description = "Sentiment analysis (positive/negative)"
+status = "standard"
+
+[tasks."question-answering".models."distilbert-squad"]
+repo_id = "distilbert-base-cased-distilled-squad"
+name = "DistilBERT SQuAD"
+model_type = "transformers"
+size_gb = 0.26
+default = true
+description = "Question answering from context"
+status = "standard"
+
+[tasks."summarization".models."bart-cnn"]
+repo_id = "facebook/bart-large-cnn"
+name = "BART CNN"
+model_type = "transformers"
+size_gb = 1.6
+default = true
+description = "Text summarization"
+status = "standard"
+
+[tasks."translation".models."opus-mt-en-de"]
+repo_id = "Helsinki-NLP/opus-mt-en-de"
+name = "OPUS MT EN-DE"
+model_type = "transformers"
+size_gb = 0.3
+default = true
+description = "English to German translation"
+status = "standard"
+
+[tasks."translation".models."opus-mt-en-fr"]
+repo_id = "Helsinki-NLP/opus-mt-en-fr"
+name = "OPUS MT EN-FR"
+model_type = "transformers"
+size_gb = 0.3
+default = false
+description = "English to French translation"
+status = "standard"
+
+[tasks."translation".models."opus-mt-en-es"]
+repo_id = "Helsinki-NLP/opus-mt-en-es"
+name = "OPUS MT EN-ES"
+model_type = "transformers"
+size_gb = 0.3
+default = false
+description = "English to Spanish translation"
+status = "standard"
+
+[tasks."image-classification".models."vit-base"]
+repo_id = "google/vit-base-patch16-224"
+name = "ViT Base"
+model_type = "transformers"
+size_gb = 0.35
+default = true
+description = "Vision Transformer for image classification"
+status = "standard"
+
+[tasks."object-detection".models."detr-resnet-50"]
+repo_id = "facebook/detr-resnet-50"
+name = "DETR ResNet-50"
+model_type = "transformers"
+size_gb = 0.17
+default = true
+description = "Object detection with DETR"
+status = "standard"
+
+[tasks."vision-language".models."qwen3-vl-8b"]
+repo_id = "Qwen/Qwen3-VL-8B-Instruct"
+name = "Qwen 3 VL (8B)"
+model_type = "transformers"
+size_gb = 16.0
+default = true
+description = "Qwen 3 Vision-Language (8B, works on all AMD/NVIDIA GPUs)"
+status = "standard"
+dependencies = ["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"]
+
+[tasks."vision-language".models."qwen3-vl-4b"]
+repo_id = "Qwen/Qwen3-VL-4B-Instruct"
+name = "Qwen 3 VL (4B)"
+model_type = "transformers"
+size_gb = 8.0
+default = false
+description = "Qwen 3 VL lightweight (4B, low VRAM)"
+status = "standard"
+dependencies = ["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"]
+
+[tasks."vision-language".models."qwen3-vl-2b"]
+repo_id = "Qwen/Qwen3-VL-2B-Instruct"
+name = "Qwen 3 VL (2B)"
+model_type = "transformers"
+size_gb = 4.0
+default = false
+description = "Qwen 3 VL smallest (2B, fast, limited accuracy)"
+status = "standard"
+dependencies = ["transformers>=4.45.0", "qwen-vl-utils>=0.0.8", "accelerate>=0.26.0"]
+
+[tasks."vision-language".models."internvl3.5-8b"]
+repo_id = "OpenGVLab/InternVL3_5-8B"
+name = "InternVL 3.5 (8B)"
+model_type = "transformers"
+size_gb = 17.0
+default = false
+description = "InternVL 3.5 multimodal VLM (non-Qwen alternative)"
+status = "standard"
+dependencies = ["transformers>=4.45.0", "accelerate>=0.26.0"]
+
+[tasks."image-to-text".models."blip-captioning"]
+repo_id = "Salesforce/blip-image-captioning-base"
+name = "BLIP Captioning"
+model_type = "transformers"
+size_gb = 0.9
+default = true
+description = "Image captioning with BLIP"
+status = "standard"
+
+[tasks."image-to-text".models."blip-captioning-large"]
+repo_id = "Salesforce/blip-image-captioning-large"
+name = "BLIP Captioning Large"
+model_type = "transformers"
+size_gb = 1.8
+default = false
+description = "Image captioning with BLIP (large)"
+status = "standard"

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hftool"
 dynamic = ["version"]
-description = "A CLI for Hugging Face models: text-to-image, text-to-video, TTS, ASR, and more."
+description = "A Docker-first TUI and CLI for running Hugging Face models."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT License"}
@@ -39,6 +39,7 @@ dependencies = [
     "huggingface_hub>=0.20.0",
     "rich>=13.0.0",
     "python-dotenv>=1.0.0",
+    "tomli>=2.0.1,<3.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -53,11 +54,12 @@ with_http = ["requests>=2.20.0"]
 
 # Text-to-Image generation (Z-Image, SDXL, FLUX)
 # Image-to-Image generation (Qwen Image Edit, SDXL)
-# Note: Qwen Image Edit requires diffusers>=0.36.0 for QwenImageEditPlusPipeline
+# Diffusers 0.40+ includes the curated FLUX.2, SANA Sprint, and Qwen pipelines.
 with_t2i = [
-    "diffusers>=0.36.0",
+    "diffusers>=0.40.0",
     "Pillow>=9.0.0",
     "accelerate>=0.26.0",
+    "peft>=0.13.0",
     "protobuf>=3.20.0",
     "sentencepiece>=0.1.99",
 ]
@@ -75,6 +77,47 @@ with_t2v = [
 # Requires system ffmpeg for MP3 conversion
 with_tts = [
     "transformers>=4.45.0",
+    "soundfile>=0.12.0",
+]
+
+# Chatterbox TTS (voice cloning, emotion control)
+with_tts_chatterbox = [
+    "chatterbox-tts",
+    "soundfile>=0.12.0",
+]
+
+# Kokoro TTS (lightweight, fast, CPU-capable)
+with_tts_kokoro = [
+    "kokoro>=0.8.0",
+    "soundfile>=0.12.0",
+]
+
+# Voiceover pipeline (script parsing + audio merging)
+# Requires system ffmpeg for audio merging and video muxing
+with_voiceover = [
+    "pysrt>=1.1.0",
+    "soundfile>=0.12.0",
+]
+
+# Vision-Language Models (Qwen 3.5, InternVL)
+with_vlm = [
+    "transformers>=4.45.0",
+    "Pillow>=9.0.0",
+    "accelerate>=0.26.0",
+    "qwen-vl-utils>=0.0.8",
+]
+
+# Scene detection (PySceneDetect + OpenCV)
+with_scene_detect = ["scenedetect[opencv]>=0.6.0"]
+
+# Auto-voiceover (VLM + scene detection + voiceover pipeline)
+with_auto_voiceover = [
+    "transformers>=4.45.0",
+    "Pillow>=9.0.0",
+    "accelerate>=0.26.0",
+    "qwen-vl-utils>=0.0.8",
+    "scenedetect[opencv]>=0.6.0",
+    "pysrt>=1.1.0",
     "soundfile>=0.12.0",
 ]
 
@@ -116,6 +159,11 @@ with_repl = [
     "prompt_toolkit>=3.0.0,<4.0",
 ]
 
+# TUI (Terminal User Interface via Textual)
+with_tui = [
+    "textual>=7.0.0",
+]
+
 # Development dependencies
 dev = [
     "pytest>=7.0.0",
@@ -130,9 +178,10 @@ all = [
     "soundfile>=0.12.0",
     # HTTP
     "requests>=2.20.0",
-    # Diffusers (T2I, I2I, T2V) - 0.36.0+ for QwenImageEditPlusPipeline
-    "diffusers>=0.36.0",
+    # Diffusers (T2I, I2I, T2V)
+    "diffusers>=0.40.0",
     "accelerate>=0.26.0",
+    "peft>=0.13.0",
     # Text cleaning (for Wan2.2 and other T2V models)
     "ftfy>=6.0.0",
     # Tokenizers (protobuf for T5, sentencepiece for various)
@@ -143,12 +192,18 @@ all = [
     "scipy",
     # Vision advanced
     "opencv-python-headless>=4.5.0",
+    # VLM support
+    "qwen-vl-utils>=0.0.8",
+    # Scene detection
+    "scenedetect[opencv]>=0.6.0",
     # Config file support (Python < 3.11)
     "tomli>=2.0.1,<3.0; python_version < '3.11'",
     # Interactive features
     "InquirerPy>=0.3.4,<1.0",
     # REPL mode
     "prompt_toolkit>=3.0.0,<4.0",
+    # TUI
+    "textual>=7.0.0",
 ]
 
 [project.scripts]
@@ -170,9 +225,12 @@ addopts = "-v --tb=short"
 where = ["."]
 include = ["hftool*"]
 
+[tool.setuptools.package-data]
+"hftool.catalog" = ["models-v1.toml"]
+
 [tool.setuptools_scm]
 # Version from git tags (e.g., v0.2.1 -> 0.2.1)
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 # Fallback for Docker builds where there's no .git directory
-fallback_version = "0.7.1"
+fallback_version = "0.10.2"

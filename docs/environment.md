@@ -212,7 +212,7 @@ export PYTORCH_ALLOC_CONF="expandable_segments:True"  # reduces fragmentation
 Enable experimental AOTriton optimizations for RDNA3 GPUs.
 
 ```bash
-export TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1  # enable (default for RDNA3)
+export TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1  # optional experimental backend
 ```
 
 ### TORCH_BLAS_PREFER_HIPBLASLT

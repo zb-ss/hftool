@@ -7,6 +7,7 @@ Results are cached in ~/.hftool/benchmarks.json for reference.
 import json
 import time
 import os
+import statistics
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, asdict
@@ -40,6 +41,54 @@ class BenchmarkResult:
     # Status
     success: bool
     error: Optional[str] = None
+    revision: Optional[str] = None
+    profile: Optional[str] = None
+    pipeline_class: Optional[str] = None
+    catalog_status: Optional[str] = None
+    first_generation_time: Optional[float] = None
+    warm_inference_times: Optional[List[float]] = None
+    gpu_free_before: Optional[float] = None
+    gpu_free_after: Optional[float] = None
+    cpu_offload: bool = False
+
+
+IMAGE_BENCHMARK_SUITE = (
+    {
+        "name": "general_landscape",
+        "prompt": "A cinematic mountain lake at sunrise, natural light, detailed reflections",
+        "seed": 101,
+        "width": 1024,
+        "height": 1024,
+    },
+    {
+        "name": "typography",
+        "prompt": "Editorial poster with the exact title 'OPEN HORIZONS', clean modern typography",
+        "seed": 202,
+        "width": 1024,
+        "height": 1024,
+    },
+    {
+        "name": "human_detail",
+        "prompt": "Natural-light portrait of an adult ceramic artist at work, realistic hands and tools",
+        "seed": 303,
+        "width": 1024,
+        "height": 1024,
+    },
+    {
+        "name": "wide_composition",
+        "prompt": "Wide architectural interior with layered depth, balanced composition, afternoon light",
+        "seed": 404,
+        "width": 1344,
+        "height": 768,
+    },
+    {
+        "name": "tall_cover",
+        "prompt": "Vertical science-fiction book cover, one astronaut, bold negative space, no text",
+        "seed": 505,
+        "width": 768,
+        "height": 1344,
+    },
+)
 
 
 # Standard test prompts for each task
@@ -164,15 +213,113 @@ def measure_vram() -> Optional[tuple]:
         
         # Get VRAM stats
         allocated = torch.cuda.memory_allocated() / (1024 ** 3)  # Convert to GB
-        reserved = torch.cuda.memory_reserved() / (1024 ** 3)
-        
-        # Reset peak stats and measure current peak
-        torch.cuda.reset_peak_memory_stats()
+
         peak = torch.cuda.max_memory_allocated() / (1024 ** 3)
         
         return (peak, allocated)
     except Exception:
         return None
+
+
+def _free_vram_gb() -> Optional[float]:
+    """Return system-wide free memory for the current CUDA/HIP device."""
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+        free_bytes, _ = torch.cuda.mem_get_info()
+        return free_bytes / (1024**3)
+    except Exception:
+        return None
+
+
+def _run_image_benchmark(
+    *,
+    task_handler,
+    model_to_load: str,
+    model_info,
+    model: str,
+    repo_id: str,
+    resolved_task: str,
+    timestamp: str,
+    device: str,
+    dtype: Optional[str],
+    load_kwargs: Dict[str, Any],
+    verbose: bool,
+) -> BenchmarkResult:
+    """Measure exact cold load, first generation, and four warm suite cases."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+    except Exception:
+        pass
+
+    gpu_free_before = _free_vram_gb()
+    load_started = time.perf_counter()
+    task_handler._pipeline = task_handler.load_pipeline(model_to_load, **load_kwargs)
+    load_time = time.perf_counter() - load_started
+
+    timings: List[float] = []
+    recorded_cases = []
+    catalog_defaults = dict(model_info.inference_defaults) if model_info else {}
+    for index, case in enumerate(IMAGE_BENCHMARK_SUITE):
+        params = dict(catalog_defaults)
+        params.update(
+            {
+                "seed": case["seed"],
+                "width": case["width"],
+                "height": case["height"],
+            }
+        )
+        started = time.perf_counter()
+        task_handler.run_inference(task_handler._pipeline, case["prompt"], **params)
+        elapsed = time.perf_counter() - started
+        timings.append(elapsed)
+        recorded_cases.append({**case, "elapsed_s": elapsed, "settings": params})
+        if verbose:
+            label = "first" if index == 0 else f"warm {index}"
+            click.echo(f"  {label}: {case['name']} {elapsed:.2f}s")
+
+    first_generation = timings[0]
+    warm_times = timings[1:]
+    median_warm = statistics.median(warm_times)
+    vram = measure_vram()
+    gpu_free_after = _free_vram_gb()
+    total_time = load_time + sum(timings)
+    return BenchmarkResult(
+        task=resolved_task,
+        model=model,
+        repo_id=repo_id,
+        timestamp=timestamp,
+        device=device,
+        dtype=dtype or (model_info.dtype if model_info else None),
+        load_time=load_time,
+        inference_time=median_warm,
+        total_time=total_time,
+        vram_peak=vram[0] if vram else None,
+        vram_allocated=vram[1] if vram else None,
+        test_prompt="hftool-image-suite-v1",
+        test_params={
+            "suite_version": 1,
+            "catalog_defaults": catalog_defaults,
+            "cases": recorded_cases,
+            "warm_statistic": "median of 4 runs",
+        },
+        success=True,
+        revision=model_info.revision if model_info else None,
+        profile=model_info.profile if model_info else None,
+        pipeline_class=model_info.pipeline_class if model_info else None,
+        catalog_status=model_info.status_label if model_info else "custom",
+        first_generation_time=first_generation,
+        warm_inference_times=warm_times,
+        gpu_free_before=gpu_free_before,
+        gpu_free_after=gpu_free_after,
+        cpu_offload=os.environ.get("HFTOOL_CPU_OFFLOAD", "").lower()
+        in {"1", "2", "true", "yes"},
+    )
 
 
 def run_benchmark(
@@ -199,7 +346,7 @@ def run_benchmark(
         BenchmarkResult
     """
     from datetime import datetime
-    from hftool.core.models import get_model_info, get_default_model_info, find_model_by_repo_id
+    from hftool.core.models import get_model_info, find_model_by_repo_id
     from hftool.core.registry import TASK_ALIASES, get_task_config
     
     # Resolve task alias
@@ -245,10 +392,25 @@ def run_benchmark(
                 task_name=resolved_task,
                 model_name=model,
                 gated=getattr(model_info, 'gated', False) if model_info else False,
+                revision=model_info.revision if model_info else None,
+                ignore_patterns=model_info.ignore_patterns if model_info else None,
             )
             model_to_load = str(model_path)
         else:
             model_to_load = model
+
+        adapter_path = None
+        if model_info and model_info.adapter:
+            from hftool.core.download import ensure_model_file_available
+
+            adapter_path = ensure_model_file_available(
+                repo_id=model_info.adapter.repo_id,
+                filename=model_info.adapter.weight_name,
+                size_gb=model_info.adapter.size_gb,
+                task_name=resolved_task,
+                model_name=model,
+                revision=model_info.adapter.revision,
+            )
         
         # Get task config
         task_config = get_task_config(resolved_task)
@@ -271,7 +433,6 @@ def run_benchmark(
             
             # Start timing for the full execution (load + inference)
             exec_start = time.time()
-            vram_before = measure_vram()
             
             # Create task handler
             if resolved_task == "text-to-image":
@@ -293,9 +454,34 @@ def run_benchmark(
             else:
                 from hftool.tasks.transformers_generic import create_task
                 task_handler = create_task(task_name=resolved_task, device=device, dtype=dtype)
+
+            if resolved_task == "text-to-image":
+                from hftool.core.executor import build_model_runtime_kwargs
+
+                load_kwargs, _ = (
+                    build_model_runtime_kwargs(
+                        model_info,
+                        str(adapter_path) if adapter_path else None,
+                    )
+                    if model_info
+                    else ({}, {})
+                )
+                return _run_image_benchmark(
+                    task_handler=task_handler,
+                    model_to_load=model_to_load,
+                    model_info=model_info,
+                    model=model,
+                    repo_id=repo_id,
+                    resolved_task=resolved_task,
+                    timestamp=timestamp,
+                    device=device,
+                    dtype=dtype,
+                    load_kwargs=load_kwargs,
+                    verbose=verbose,
+                )
             
             # Execute (this loads model and runs inference)
-            result = task_handler.execute(
+            task_handler.execute(
                 model=model_to_load,
                 input_data=input_data,
                 output_path=tmp_output,

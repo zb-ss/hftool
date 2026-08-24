@@ -52,7 +52,7 @@ COPY pyproject.toml README.md ./
 COPY hftool/ ./hftool/
 
 # Set version for Docker build
-ARG HFTOOL_VERSION=0.7.1
+ARG HFTOOL_VERSION=0.10.2
 RUN echo "__version__ = '${HFTOOL_VERSION}'" > hftool/_version.py
 
 # Install all dependencies (fast, from pre-built wheels)
@@ -68,7 +68,17 @@ RUN pip install --no-cache-dir \
     "sentencepiece>=0.1.99" \
     "soundfile>=0.12.0" \
     "ftfy>=6.0.0" \
-    "InquirerPy>=0.3.0"
+    "InquirerPy>=0.3.0" \
+    "qwen-vl-utils>=0.0.8" \
+    "scenedetect[opencv]>=0.6.0" \
+    "opencv-python-headless>=4.5.0" \
+    "pysrt>=1.1.0" \
+    "kokoro>=0.8.0" \
+    "textual>=7.0.0" \
+    "openai>=1.0.0" \
+    "google-genai>=1.0.0"
+
+RUN pip install --no-cache-dir spacy && python -m spacy download en_core_web_sm
 
 # Install diffusers from main branch for LTX-2 support (requires 0.37.0+)
 # Once diffusers 0.37.0 is released, replace with: "diffusers>=0.37.0"
@@ -91,6 +101,7 @@ RUN mkdir -p /root/.cache/huggingface /root/.hftool
 ENV HFTOOL_MODELS_DIR=/root/.cache/huggingface
 ENV HF_HOME=/root/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
+ENV HFTOOL_IN_DOCKER=1
 
 # Verify CUDA is working
 RUN python -c "import torch; print(f'PyTorch {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')" || echo "GPU check will run at runtime"

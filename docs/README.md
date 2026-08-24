@@ -1,58 +1,46 @@
 # hftool Documentation
 
-Welcome to the hftool documentation. This folder contains detailed guides for configuration and setup.
-
-## Documentation Index
-
-| Document | Description |
-|----------|-------------|
-| [Configuration Guide](configuration.md) | Config file format, locations, and examples |
-| [Environment Variables](environment.md) | Complete environment variable reference |
-| [GPU Setup Guide](gpu-setup.md) | AMD ROCm, NVIDIA CUDA, Apple MPS, and CPU setup |
-
-## Quick Links
-
-- **[.env.example](../.env.example)** - Copy this to `.env` for your settings
-- **[CLAUDE.md](../CLAUDE.md)** - Developer guide for contributing
+> [Back to README](../README.md)
 
 ## Getting Started
 
-1. **Check your system:** `hftool doctor`
-2. **Copy example config:** `cp .env.example .env`
-3. **Edit your settings:** Customize `.env` or `~/.hftool/config.toml`
-4. **Generate something:** `hftool -t t2i -i "A cat" -o cat.png`
+| Document | Description |
+|----------|-------------|
+| [Installation Guide](installation.md) | pip, pipx, Docker, and development setup |
+| [Docker Guide](docker.md) | Docker setup, GPU passthrough, multi-GPU |
+| [Hardware Guide](hardware.md) | VRAM requirements, multi-GPU, platform notes |
+| [GPU Setup](gpu-setup.md) | AMD ROCm, NVIDIA CUDA, Apple MPS configuration |
 
-## Common Tasks
+## Using hftool
 
-### Set up HuggingFace token (for gated models)
+| Document | Description |
+|----------|-------------|
+| [CLI Reference](cli-reference.md) | Full command reference, aliases, config files |
+| [Features & UX](features.md) | File picker, history, dry-run, completions, diagnostics |
+| [Model Management](models.md) | Download, clean, gated models, storage, debugging |
+| [Configuration](configuration.md) | Config file format, locations, and examples |
+| [Environment Variables](environment.md) | Complete environment variable reference |
 
-```bash
-# Get your token from: https://huggingface.co/settings/tokens
-echo "HF_TOKEN=hf_xxxxxxxxxxxx" >> ~/.bashrc
-source ~/.bashrc
-```
+## Task Guides
 
-### Configure default output directory
+| Document | Description |
+|----------|-------------|
+| [Text-to-Image](text-to-image.md) | Z-Image, SDXL, FLUX — examples and parameters |
+| [Image-to-Image](image-to-image.md) | Qwen Edit, FLUX.2 Klein, SDXL — multi-image, params |
+| [Text-to-Video](text-to-video.md) | LTX-2, HunyuanVideo, I2V — examples and parameters |
+| [Text-to-Speech](text-to-speech.md) | Kokoro, Chatterbox, Bark — voice cloning guide |
+| [Voiceover Pipeline](voiceover.md) | Auto-voiceover, re-voice, manual script, Docker workflow |
+| [Speech-to-Text](speech-to-text.md) | Whisper transcription with timestamps and SRT |
+| [Other Tasks](other-tasks.md) | LLMs, classification, detection, translation |
 
-```bash
-mkdir -p ~/.hftool
-cat > ~/.hftool/config.toml << 'EOF'
-[defaults]
-output_dir = "~/AI/outputs"
-auto_download = true
-EOF
-```
+## Quick Links
 
-### Set up Docker for AMD ROCm
-
-```bash
-hftool docker setup
-hftool docker build
-hftool docker run -- -t t2i -i "A cat" -o ~/Pictures/cat.png
-```
+- [.env.example](../.env.example) — Copy this to `.env` for your settings
+- `hftool doctor` — Check your system setup
+- `hftool -I` — Full interactive wizard
+- `hftool --help` — CLI usage
 
 ## Need Help?
 
-- Run `hftool --help` for CLI usage
 - Run `hftool doctor` for system diagnostics
 - See [GitHub Issues](https://github.com/zb-ss/hftool/issues) for bug reports
