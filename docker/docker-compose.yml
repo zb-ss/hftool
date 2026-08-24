@@ -10,6 +10,14 @@
 #
 # Interactive mode:
 #   docker compose --profile rocm run --rm hftool-rocm -I
+#
+# Output ownership note:
+#   These services run as root, so files written to /workspace are owned by
+#   root:root on the host. For headless/CI use prefer `hftool docker run`,
+#   which runs as your UID:GID and fixes output ownership automatically:
+#     hftool docker run -- voiceover --script x.srt --video x.mp4 --output x.vo.mp4
+#   If you must use compose directly, chown the output afterwards, e.g.:
+#     sudo chown "$(id -u):$(id -g)" x.vo.mp4
 
 services:
   # AMD ROCm GPU service

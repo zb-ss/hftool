@@ -48,7 +48,16 @@ class GPUInfo:
     render_device: str  # e.g., /dev/dri/renderD128
     card_device: str  # e.g., /dev/dri/card0
     vram_gb: Optional[float] = None
+    free_vram_gb: Optional[float] = None
     is_display_gpu: bool = False
+    pci_bus: Optional[str] = None
+
+    @property
+    def live_free_vram_gb(self) -> float:
+        """Return live free VRAM when available, otherwise total VRAM."""
+        if self.free_vram_gb is not None:
+            return self.free_vram_gb
+        return self.vram_gb or 0.0
 
 
 def list_amd_gpus() -> List[GPUInfo]:
@@ -98,7 +107,6 @@ def list_amd_gpus() -> List[GPUInfo]:
         except Exception:
             continue
 
-        card_num = int(card_dir.name[4:])
         card_device = f"/dev/dri/{card_dir.name}"
 
         # Find the corresponding renderD* device by matching PCI device path
@@ -143,16 +151,26 @@ def list_amd_gpus() -> List[GPUInfo]:
             except Exception:
                 pass
 
-        # Try to get VRAM size
+        # Read total and live-used VRAM from amdgpu sysfs. Unlike process-local
+        # allocator counters, this accounts for desktop and gaming pressure.
         vram_gb = None
+        free_vram_gb = None
         try:
-            # Check for VRAM via amdgpu driver sysfs
-            vram_path = device_path / "mem_info_vram_total"
-            if vram_path.exists():
-                vram_bytes = int(vram_path.read_text().strip())
-                vram_gb = round(vram_bytes / (1024**3), 1)
+            total_path = device_path / "mem_info_vram_total"
+            used_path = device_path / "mem_info_vram_used"
+            if total_path.exists():
+                total_bytes = int(total_path.read_text().strip())
+                vram_gb = round(total_bytes / (1024**3), 1)
+                if used_path.exists():
+                    used_bytes = int(used_path.read_text().strip())
+                    free_vram_gb = round(max(0, total_bytes - used_bytes) / (1024**3), 1)
         except Exception:
             pass
+
+        try:
+            pci_bus = device_path.resolve().name
+        except Exception:
+            pci_bus = None
 
         # Check if this GPU is being used for display
         # A GPU driving a display typically has active connectors
@@ -176,7 +194,9 @@ def list_amd_gpus() -> List[GPUInfo]:
             render_device=render_device,
             card_device=card_device,
             vram_gb=vram_gb,
+            free_vram_gb=free_vram_gb,
             is_display_gpu=is_display,
+            pci_bus=pci_bus,
         ))
         gpu_index += 1
 
@@ -496,6 +516,55 @@ def process_docker_args(
     return new_args, volume_mount, host_output_path
 
 
+def _fix_hf_cache_permissions(hf_home: str) -> None:
+    """Fix HuggingFace cache files with wrong ownership.
+
+    When Docker previously ran as root (or without --user), it creates
+    model cache dirs owned by root:root. Now that we run with --user,
+    the container can't write to those dirs. Use a quick Docker run
+    as root to chown the entire HF cache to the current user.
+    """
+    hub_dir = os.path.join(hf_home, "hub")
+    if not os.path.isdir(hub_dir):
+        return
+
+    try:
+        uid = os.getuid()
+        gid = os.getgid()
+    except (AttributeError, OSError):
+        return  # Windows
+
+    # Scan top-level hub entries for any owned by a different user
+    needs_fix = False
+    try:
+        for entry in os.scandir(hub_dir):
+            stat = entry.stat(follow_symlinks=False)
+            if stat.st_uid != uid:
+                needs_fix = True
+                break
+    except PermissionError:
+        needs_fix = True
+
+    if not needs_fix:
+        return
+
+    # Use Docker as root to fix ownership of the entire HF cache
+    import subprocess
+    try:
+        subprocess.run(
+            [
+                "docker", "run", "--rm",
+                "-v", f"{hf_home}:/data/hf",
+                "alpine:3.20",
+                "chown", "-R", f"{uid}:{gid}", "/data/hf",
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+    except Exception:
+        pass  # Best-effort — user will see the permission error if this fails
+
+
 def get_docker_run_command(
     hardware: HardwareInfo,
     hftool_args: List[str],
@@ -505,6 +574,8 @@ def get_docker_run_command(
     gpu_indices: Optional[List[int]] = None,
     mount_home: bool = True,
     output_volume: Optional[str] = None,
+    tty: Optional[bool] = None,
+    multi_gpu: bool = False,
 ) -> List[str]:
     """Build the docker run command for the detected hardware.
 
@@ -517,6 +588,9 @@ def get_docker_run_command(
         gpu_indices: Specific GPU indices to use (None = all GPUs)
         mount_home: Mount user's home directory for file browsing (default: True)
         output_volume: Volume mount for output directory (from process_docker_args)
+        tty: Allocate a pseudo-TTY (``docker run -t``). When None (default),
+            auto-detected from whether stdin/stdout are TTYs so headless/CI
+            invocations don't fail with "the input device is not a TTY".
 
     Returns:
         List of command arguments for subprocess
@@ -526,12 +600,24 @@ def get_docker_run_command(
     hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
     hftool_config = os.environ.get("HFTOOL_CONFIG", os.path.expanduser("~/.hftool"))
 
+    # Fix HF cache lock permissions before running — earlier root-mode Docker
+    # runs may have created .locks/ subdirs owned by root, which become
+    # inaccessible when running with --user (non-root).
+    _fix_hf_cache_permissions(hf_home)
+
     # Support custom model directory (e.g., HFTOOL_MODELS_DIR=/data3/.hftool/models/)
     models_dir = os.environ.get("HFTOOL_MODELS_DIR")
     if models_dir:
         models_dir = os.path.expanduser(models_dir)
 
-    cmd = ["docker", "run", "--rm", "-it"]
+    # Decide on TTY allocation. An interactive terminal gets "-it" (keeps the
+    # rich progress UI and lets the wizard read input); a headless/CI run gets
+    # "-i" only, because "-t" without a real TTY makes Docker abort with
+    # "the input device is not a TTY". stdin is still attached so piped input
+    # works either way.
+    if tty is None:
+        tty = sys.stdin.isatty() and sys.stdout.isatty()
+    cmd = ["docker", "run", "--rm", "-it"] if tty else ["docker", "run", "--rm", "-i"]
 
     # Run as current user to avoid permission issues with created files
     # This ensures output files are owned by the host user, not root
@@ -556,11 +642,14 @@ def get_docker_run_command(
             render_devices = get_render_devices_for_gpus(gpu_indices)
             for device in render_devices:
                 cmd.extend(["--device", device])
-            # Container sees GPUs as 0, 1, 2... regardless of host indices
-            # So we set HIP_VISIBLE_DEVICES to container indices (0,1,2...)
+            # ROCr filters physical KFD agents before HIP sees them. Keep host
+            # physical indices at that layer, then use container-renumbered
+            # indices for HIP/PyTorch. Preserve both identities for the TUI.
+            physical_indices = ",".join(str(index) for index in gpu_indices)
             container_indices = ",".join(str(i) for i in range(len(gpu_indices)))
             cmd.extend(["-e", f"HIP_VISIBLE_DEVICES={container_indices}"])
-            cmd.extend(["-e", f"ROCR_VISIBLE_DEVICES={container_indices}"])
+            cmd.extend(["-e", f"ROCR_VISIBLE_DEVICES={physical_indices}"])
+            cmd.extend(["-e", f"HFTOOL_PHYSICAL_GPU_INDICES={physical_indices}"])
         else:
             # No specific GPU selected - pass all of /dev/dri
             cmd.extend(["--device=/dev/dri"])
@@ -608,7 +697,9 @@ def get_docker_run_command(
         if gpu_indices:
             device_str = ",".join(str(i) for i in gpu_indices)
             cmd.extend(["--gpus", f'"device={device_str}"'])
-            cmd.extend(["-e", f"CUDA_VISIBLE_DEVICES={device_str}"])
+            container_indices = ",".join(str(i) for i in range(len(gpu_indices)))
+            cmd.extend(["-e", f"CUDA_VISIBLE_DEVICES={container_indices}"])
+            cmd.extend(["-e", f"HFTOOL_PHYSICAL_GPU_INDICES={device_str}"])
         else:
             cmd.extend(["--gpus", "all"])
 
@@ -625,8 +716,8 @@ def get_docker_run_command(
     # Mount user's home directory for file browsing in interactive mode
     # This allows the file picker to access files outside the working directory
     if mount_home:
-        cmd.extend(["-v", f"{user_home}:/home/host:ro"])  # Read-only for safety
-        cmd.extend(["-e", f"HFTOOL_HOST_HOME=/home/host"])
+        cmd.extend(["-v", f"{user_home}:/home/host"])
+        cmd.extend(["-e", "HFTOOL_HOST_HOME=/home/host"])
         cmd.extend(["-e", f"HFTOOL_REAL_HOME={user_home}"])
 
     # Mount output directory if specified (for paths outside workspace)
@@ -657,7 +748,7 @@ def get_docker_run_command(
     cmd.extend(["-e", "HFTOOL_AUTO_DOWNLOAD=1"])
 
     # Pass multi-GPU flag if multiple GPUs selected
-    if gpu_indices and len(gpu_indices) > 1:
+    if multi_gpu or (gpu_indices and len(gpu_indices) > 1):
         cmd.extend(["-e", "HFTOOL_MULTI_GPU=1"])
 
     if hf_token or os.environ.get("HF_TOKEN"):
@@ -676,6 +767,12 @@ def get_docker_run_command(
         value = os.environ.get(var)
         if value:
             cmd.extend(["-e", f"{var}={value}"])
+
+    # Pass through API keys for cloud VLM providers (voiceover pipeline)
+    for api_var in ("OPENAI_API_KEY", "GOOGLE_API_KEY"):
+        value = os.environ.get(api_var)
+        if value:
+            cmd.extend(["-e", f"{api_var}={value}"])
 
     # Pass through debug and logging settings
     if os.environ.get("HFTOOL_DEBUG"):
@@ -784,6 +881,8 @@ def run_in_docker(
     hardware: Optional[HardwareInfo] = None,
     auto_setup: bool = True,
     gpu_indices: Optional[List[int]] = None,
+    tty: Optional[bool] = None,
+    multi_gpu: bool = False,
 ) -> Tuple[int, Optional[str]]:
     """Run hftool command in Docker container.
 
@@ -792,6 +891,7 @@ def run_in_docker(
         hardware: Pre-detected hardware (will detect if None)
         auto_setup: Automatically build/pull image if missing
         gpu_indices: Specific GPU indices to use (None = all GPUs)
+        tty: Force/forbid TTY allocation (None = auto-detect from the terminal)
 
     Returns:
         Tuple of (exit_code, host_output_path_or_None)
@@ -836,6 +936,8 @@ def run_in_docker(
         processed_args,
         gpu_indices=gpu_indices,
         output_volume=output_volume,
+        tty=tty,
+        multi_gpu=multi_gpu,
     )
 
     try:
@@ -989,7 +1091,70 @@ def interactive_gpu_select(platform: GPUPlatform = GPUPlatform.ROCM) -> Optional
         return None
 
 
-def parse_gpu_arg(gpu_arg: Optional[str], platform: GPUPlatform = GPUPlatform.ROCM) -> Optional[List[int]]:
+def select_amd_gpu(
+    gpus: List[GPUInfo],
+    required_vram_gb: Optional[float] = None,
+    safety_reserve_gb: float = 2.0,
+    display_penalty_gb: float = 4.0,
+) -> Optional[GPUInfo]:
+    """Choose one physical AMD GPU from live memory and display pressure."""
+    if not gpus:
+        return None
+
+    def adequate(gpu: GPUInfo) -> bool:
+        if required_vram_gb is None:
+            return True
+        return gpu.live_free_vram_gb >= required_vram_gb + safety_reserve_gb
+
+    def score(gpu: GPUInfo) -> tuple[float, float, float]:
+        display_cost = display_penalty_gb if gpu.is_display_gpu else 0.0
+        return (
+            gpu.live_free_vram_gb - display_cost,
+            gpu.live_free_vram_gb,
+            gpu.vram_gb or 0.0,
+        )
+
+    adequate_gpus = [gpu for gpu in gpus if adequate(gpu)]
+    return max(adequate_gpus or gpus, key=score)
+
+
+def get_required_vram_from_args(args: List[str]) -> Optional[float]:
+    """Resolve a catalog model's minimum VRAM from hftool CLI arguments."""
+    task_name = None
+    model_name = None
+    for index, argument in enumerate(args):
+        if argument in {"--task", "-t"} and index + 1 < len(args):
+            task_name = args[index + 1]
+        elif argument.startswith("--task="):
+            task_name = argument.split("=", 1)[1]
+        elif argument in {"--model", "-m"} and index + 1 < len(args):
+            model_name = args[index + 1]
+        elif argument.startswith("--model="):
+            model_name = argument.split("=", 1)[1]
+
+    if not task_name:
+        return None
+
+    try:
+        from hftool.core.models import get_default_model_info, get_model_info
+        from hftool.core.registry import TASK_ALIASES
+
+        resolved_task = TASK_ALIASES.get(task_name, task_name)
+        info = (
+            get_model_info(resolved_task, model_name)
+            if model_name
+            else get_default_model_info(resolved_task)
+        )
+        return info.min_vram_gb
+    except (ImportError, ValueError):
+        return None
+
+
+def parse_gpu_arg(
+    gpu_arg: Optional[str],
+    platform: GPUPlatform = GPUPlatform.ROCM,
+    required_vram_gb: Optional[float] = None,
+) -> Optional[List[int]]:
     """Parse --gpu argument value into GPU indices.
 
     Args:
@@ -1008,14 +1173,13 @@ def parse_gpu_arg(gpu_arg: Optional[str], platform: GPUPlatform = GPUPlatform.RO
         return None  # None means all GPUs
 
     if gpu_arg == "auto":
-        # Auto-select best non-display GPU
         if platform == GPUPlatform.ROCM:
-            gpus = list_amd_gpus()
-            non_display = [g for g in gpus if not g.is_display_gpu]
-            if non_display:
-                return [non_display[0].index]
-            elif gpus:
-                return [gpus[0].index]
+            selected = select_amd_gpu(
+                list_amd_gpus(),
+                required_vram_gb=required_vram_gb,
+            )
+            if selected is not None:
+                return [selected.index]
         return None
 
     # Parse comma-separated indices

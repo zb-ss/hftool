@@ -19,7 +19,8 @@ Or set in config/env:
 import os
 import sys
 import random
-from typing import Any, Dict, List, Optional, Tuple
+from importlib.util import find_spec
+from typing import Any, Dict, Optional
 from pathlib import Path
 
 import click
@@ -27,11 +28,7 @@ import click
 
 def is_inquirer_available() -> bool:
     """Check if InquirerPy is available."""
-    try:
-        from InquirerPy import inquirer
-        return True
-    except ImportError:
-        return False
+    return find_spec("InquirerPy") is not None
 
 
 def run_interactive_mode(
@@ -75,9 +72,6 @@ def run_interactive_mode(
     from InquirerPy.base.control import Choice
     from InquirerPy.separator import Separator
     
-    from hftool.core.registry import TASK_REGISTRY, TASK_ALIASES
-    from hftool.core.models import MODEL_REGISTRY, get_models_for_task
-    from hftool.core.download import get_download_status
     
     click.echo("")
     click.echo(click.style("╔══════════════════════════════════════════════════════════╗", fg="cyan"))
@@ -223,7 +217,7 @@ def _select_model(inquirer, Choice, Separator, task: str) -> Optional[str]:
     default_model = None
     
     for short_name, info in models.items():
-        status = get_download_status(info.repo_id)
+        status = get_download_status(info.repo_id, info.revision)
         
         # Status indicator
         if status == "downloaded":
@@ -266,7 +260,7 @@ def _get_input(inquirer, task: str) -> str:
     import json
     from hftool.core.registry import get_task_config, TASK_ALIASES
     from hftool.core.parameters import get_task_schema
-    from hftool.io.file_picker import FilePicker, FileType
+    from hftool.io.file_picker import FileType
     
     config = get_task_config(task)
     resolved_task = TASK_ALIASES.get(task, task)
@@ -437,7 +431,7 @@ def _pick_file_with_navigation(inquirer, picker, reference: str, task: str, file
     """
     from InquirerPy.base.control import Choice
     from InquirerPy.separator import Separator
-    from hftool.io.file_picker import is_running_in_docker, get_docker_home
+    from hftool.io.file_picker import get_docker_home
 
     # Handle history reference directly
     if reference == "@@":
@@ -823,7 +817,6 @@ def _get_extra_params(inquirer, task: str) -> Dict[str, Any]:
         Dictionary of extra parameters
     """
     from hftool.core.registry import get_task_config
-    from hftool.core.parameters import get_task_schema
     
     # Check if task has common parameters to suggest
     config = get_task_config(task)

@@ -13,7 +13,7 @@ import glob
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 # Try to import torch, but allow the module to be imported without it
 try:
@@ -26,24 +26,58 @@ except ImportError:
 
 def configure_rocm_env() -> None:
     """Configure environment variables for optimal ROCm performance.
-    
+
     This should be called early, before PyTorch operations.
     Sets up experimental features and memory optimizations for AMD GPUs.
     """
-    # Enable experimental memory-efficient attention for RDNA3 (Navi31, etc.)
-    # This enables AOTriton optimizations for scaled_dot_product_attention
-    if "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL" not in os.environ:
-        os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
-    
+    # Native PyTorch SDPA is the default. Experimental attention backends are
+    # opt-in and must not be silently enabled here.
+
     # Reduce memory fragmentation with expandable segments
     # Note: PYTORCH_HIP_ALLOC_CONF is deprecated, use PYTORCH_ALLOC_CONF
     if "PYTORCH_ALLOC_CONF" not in os.environ:
         os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
-    
+
     # Use hipBLAS instead of hipBLASLt for better compatibility on consumer GPUs
     # hipBLASLt is optimized for datacenter GPUs (MI250, MI300) but may not work well on RDNA3
     if "TORCH_BLAS_PREFER_HIPBLASLT" not in os.environ:
         os.environ["TORCH_BLAS_PREFER_HIPBLASLT"] = "0"
+
+    # Patch torch.repeat_interleave for ROCm HIP compatibility.
+    # This op crashes with hipErrorIllegalState when both input and
+    # repeats are CUDA tensors on RDNA3 GPUs (PyTorch 2.9 + ROCm 7.1).
+    # Must be applied BEFORE any model loads — not just VLM, since TTS
+    # and other models also trigger the same crash.
+    _patch_repeat_interleave_for_rocm()
+
+
+_REPEAT_INTERLEAVE_PATCHED = False
+
+
+def _patch_repeat_interleave_for_rocm() -> None:
+    """Globally patch ``torch.repeat_interleave`` for ROCm HIP.
+
+    ``torch.repeat_interleave`` with CUDA tensors crashes on RDNA3 GPUs
+    under ROCm HIP (``hipErrorIllegalState``).  The workaround moves
+    tensors to CPU for that single op, then back to the original device.
+    This is a no-op if PyTorch isn't available or isn't built for ROCm.
+    """
+    global _REPEAT_INTERLEAVE_PATCHED
+    if _REPEAT_INTERLEAVE_PATCHED or not _TORCH_AVAILABLE:
+        return
+    if getattr(torch.version, "hip", None) is None:
+        return
+
+    _original = torch.repeat_interleave
+
+    def _safe_repeat_interleave(input, repeats, *args, **kwargs):
+        if isinstance(repeats, torch.Tensor) and repeats.is_cuda:
+            device = input.device
+            return _original(input.cpu(), repeats.cpu(), *args, **kwargs).to(device)
+        return _original(input, repeats, *args, **kwargs)
+
+    torch.repeat_interleave = _safe_repeat_interleave
+    _REPEAT_INTERLEAVE_PATCHED = True
 
 
 @dataclass
@@ -61,14 +95,52 @@ class DeviceInfo:
 
 @dataclass
 class GPUInfo:
-    """Detailed information about a specific GPU."""
-    index: int  # PyTorch device index
-    name: str  # GPU name (e.g., "AMD Radeon RX 7900 XTX")
-    vram_gb: float  # Total VRAM in GB
-    pci_bus: Optional[str]  # PCI bus address (e.g., "0000:03:00.0")
-    has_display: bool  # True if display is connected to this GPU
-    render_device: Optional[str]  # DRI render node (e.g., "/dev/dri/renderD128")
-    is_rocm: bool  # True if AMD ROCm GPU
+    """Detailed information about a visible GPU and its physical identity."""
+
+    index: int  # PyTorch-visible index
+    name: str
+    vram_gb: float
+    pci_bus: Optional[str]
+    has_display: bool
+    render_device: Optional[str]
+    is_rocm: bool
+    free_vram_gb: Optional[float] = None
+    physical_index: Optional[int] = None
+
+    @property
+    def resolved_physical_index(self) -> int:
+        """Return the physical index, falling back to the visible index."""
+        return self.index if self.physical_index is None else self.physical_index
+
+
+@dataclass(frozen=True)
+class GPUSelection:
+    """Result of a load-aware single-GPU selection decision."""
+
+    gpu: Optional[GPUInfo]
+    adequate: bool
+    required_vram_gb: Optional[float]
+    safety_reserve_gb: float
+    reason: str
+
+    @property
+    def visible_index(self) -> Optional[int]:
+        return self.gpu.index if self.gpu else None
+
+    def format_message(self) -> str:
+        """Explain physical/visible mapping, live memory, display, and reason."""
+        if self.gpu is None:
+            return "No compatible GPU is visible; use CPU or check Docker GPU passthrough."
+        free_text = (
+            f"{self.gpu.free_vram_gb:.1f}/{self.gpu.vram_gb:.1f} GB free"
+            if self.gpu.free_vram_gb is not None
+            else f"free VRAM unavailable ({self.gpu.vram_gb:.1f} GB total)"
+        )
+        display_text = "display attached" if self.gpu.has_display else "no display"
+        return (
+            f"Selected physical GPU {self.gpu.resolved_physical_index} as PyTorch cuda:{self.gpu.index}: "
+            f"{free_text}, {display_text}. {self.reason}"
+        )
 
 
 def detect_device() -> str:
@@ -312,115 +384,186 @@ def is_display_gpu(gpu_index: int) -> bool:
     return False
 
 
+def get_visible_physical_indices(device_count: Optional[int] = None) -> List[int]:
+    """Map PyTorch-visible indices back to user-facing physical GPU indices."""
+    if device_count is None:
+        device_count = torch.cuda.device_count() if _TORCH_AVAILABLE and torch.cuda.is_available() else 0
+
+    for variable in (
+        "HFTOOL_PHYSICAL_GPU_INDICES",
+        "ROCR_VISIBLE_DEVICES",
+        "CUDA_VISIBLE_DEVICES",
+        "HIP_VISIBLE_DEVICES",
+    ):
+        raw_value = os.environ.get(variable, "").strip()
+        if not raw_value:
+            continue
+        try:
+            indices = [int(value.strip()) for value in raw_value.split(",")]
+        except ValueError:
+            continue
+        if len(indices) >= device_count:
+            return indices[:device_count]
+
+    return list(range(device_count))
+
+
 def get_all_gpus() -> List[GPUInfo]:
-    """Enumerate all available GPUs with detailed information.
-
-    Returns:
-        List of GPUInfo for each detected GPU, including display detection.
-    """
-    gpus = []
-
+    """Enumerate visible GPUs with live free memory and physical identity."""
+    gpus: List[GPUInfo] = []
     if not _TORCH_AVAILABLE or not torch.cuda.is_available():
         return gpus
 
     device_count = torch.cuda.device_count()
+    physical_indices = get_visible_physical_indices(device_count)
     rocm = is_rocm()
 
-    for i in range(device_count):
+    for visible_index in range(device_count):
         try:
-            props = torch.cuda.get_device_properties(i)
-            name = props.name
-            vram_gb = props.total_memory / (1024 ** 3)
-            pci_bus = props.pci_bus_id if hasattr(props, "pci_bus_id") else None
+            props = torch.cuda.get_device_properties(visible_index)
+            total_vram_gb = props.total_memory / (1024 ** 3)
+            try:
+                free_bytes, _ = torch.cuda.mem_get_info(visible_index)
+                free_vram_gb: Optional[float] = free_bytes / (1024 ** 3)
+            except Exception:
+                free_vram_gb = None
 
-            # Find render device
-            card_num = _get_drm_card_for_gpu(i)
+            card_num = _get_drm_card_for_gpu(visible_index)
             render_device = None
             if card_num is not None:
-                # renderD128 corresponds to card0, renderD129 to card1, etc.
                 render_path = f"/dev/dri/renderD{128 + card_num}"
                 if Path(render_path).exists():
                     render_device = render_path
 
-            has_display = is_display_gpu(i)
-
-            gpus.append(GPUInfo(
-                index=i,
-                name=name,
-                vram_gb=vram_gb,
-                pci_bus=pci_bus,
-                has_display=has_display,
-                render_device=render_device,
-                is_rocm=rocm,
-            ))
+            gpus.append(
+                GPUInfo(
+                    index=visible_index,
+                    physical_index=physical_indices[visible_index],
+                    name=props.name,
+                    vram_gb=total_vram_gb,
+                    free_vram_gb=free_vram_gb,
+                    pci_bus=props.pci_bus_id if hasattr(props, "pci_bus_id") else None,
+                    has_display=is_display_gpu(visible_index),
+                    render_device=render_device,
+                    is_rocm=rocm,
+                )
+            )
         except Exception:
             continue
 
     return gpus
 
 
-def get_compute_gpu() -> int:
-    """Get the best GPU index for compute workloads.
+def _selection_policy() -> tuple[float, float]:
+    """Resolve configurable GPU reserve and display-penalty policy."""
+    from hftool.core.config import Config
+    from hftool.core.models import get_catalog_runtime_config
 
-    This prefers GPUs without connected displays to avoid VRAM conflicts
-    with the desktop compositor (sway, KDE, GNOME, etc.).
-
-    If all GPUs have displays, or detection fails, returns the GPU
-    with the most VRAM.
-
-    Returns:
-        GPU index (0-based) for compute workloads
-    """
-    gpus = get_all_gpus()
-
-    if not gpus:
-        return 0  # Fallback to first GPU
-
-    # Prefer GPUs without displays
-    non_display_gpus = [g for g in gpus if not g.has_display]
-
-    if non_display_gpus:
-        # Among non-display GPUs, prefer the one with most VRAM
-        best = max(non_display_gpus, key=lambda g: g.vram_gb)
-        return best.index
-
-    # All GPUs have displays - pick the one with most VRAM
-    best = max(gpus, key=lambda g: g.vram_gb)
-    return best.index
+    defaults = get_catalog_runtime_config("gpu_selection")
+    config = Config.get()
+    reserve = float(
+        config.get_value(
+            "gpu_safety_reserve_gb",
+            default=defaults.get("safety_reserve_gb", 0.0),
+        )
+    )
+    display_penalty = float(
+        config.get_value(
+            "gpu_display_penalty_gb",
+            default=defaults.get("display_penalty_gb", 0.0),
+        )
+    )
+    if reserve < 0 or display_penalty < 0:
+        raise ValueError("GPU reserve and display penalty must be non-negative")
+    return reserve, display_penalty
 
 
-def parse_gpu_selection(gpu_arg: str) -> List[int]:
-    """Parse the --gpu argument into a list of GPU indices.
+def select_compute_gpu(
+    required_vram_gb: Optional[float] = None,
+    *,
+    gpus: Optional[Sequence[GPUInfo]] = None,
+    safety_reserve_gb: Optional[float] = None,
+    display_penalty_gb: Optional[float] = None,
+) -> GPUSelection:
+    """Choose one GPU using live memory, display pressure, and model needs."""
+    candidates = list(get_all_gpus() if gpus is None else gpus)
+    policy_reserve, policy_display_penalty = _selection_policy()
+    reserve = policy_reserve if safety_reserve_gb is None else safety_reserve_gb
+    display_penalty = (
+        policy_display_penalty if display_penalty_gb is None else display_penalty_gb
+    )
+    if reserve < 0 or display_penalty < 0:
+        raise ValueError("GPU reserve and display penalty must be non-negative")
+    if not candidates:
+        return GPUSelection(None, False, required_vram_gb, reserve, "No GPU detected.")
 
-    Args:
-        gpu_arg: One of:
-            - "auto": Use get_compute_gpu() to select best GPU
-            - "all": Use all available GPUs
-            - "0", "1", etc.: Use specific GPU
-            - "0,1", "1,2", etc.: Use multiple specific GPUs
+    def free_vram(gpu: GPUInfo) -> float:
+        return gpu.free_vram_gb if gpu.free_vram_gb is not None else gpu.vram_gb
 
-    Returns:
-        List of GPU indices to use
-    """
+    def is_adequate(gpu: GPUInfo) -> bool:
+        if required_vram_gb is None:
+            return True
+        return free_vram(gpu) >= required_vram_gb + reserve
+
+    def score(gpu: GPUInfo) -> float:
+        return free_vram(gpu) - (display_penalty if gpu.has_display else 0.0)
+
+    adequate_candidates = [gpu for gpu in candidates if is_adequate(gpu)]
+    pool = adequate_candidates or candidates
+    best = max(pool, key=lambda gpu: (score(gpu), free_vram(gpu), gpu.vram_gb))
+    adequate = is_adequate(best)
+
+    if required_vram_gb is None:
+        reason = "Highest live headroom after applying the display-GPU penalty."
+    elif adequate:
+        reason = (
+            f"Meets the {required_vram_gb:.1f} GB model minimum plus the "
+            f"{reserve:.1f} GB safety reserve."
+        )
+    else:
+        reason = (
+            f"No GPU meets the {required_vram_gb:.1f} GB model minimum plus the "
+            f"{reserve:.1f} GB safety reserve; CPU offload or freeing VRAM is required."
+        )
+    return GPUSelection(best, adequate, required_vram_gb, reserve, reason)
+
+
+def get_compute_gpu(required_vram_gb: Optional[float] = None) -> int:
+    """Return the best PyTorch-visible GPU index for compatibility."""
+    selection = select_compute_gpu(required_vram_gb)
+    return selection.visible_index if selection.visible_index is not None else 0
+
+
+def parse_gpu_selection(gpu_arg: str, required_vram_gb: Optional[float] = None) -> List[int]:
+    """Parse physical GPU intent into PyTorch-visible indices."""
     if not _TORCH_AVAILABLE or not torch.cuda.is_available():
         return []
 
     device_count = torch.cuda.device_count()
-
     if gpu_arg == "auto":
-        return [get_compute_gpu()]
-
+        return [get_compute_gpu(required_vram_gb)]
     if gpu_arg == "all":
         return list(range(device_count))
 
-    # Parse comma-separated indices
     try:
-        indices = [int(x.strip()) for x in gpu_arg.split(",")]
-        # Validate indices
-        valid = [i for i in indices if 0 <= i < device_count]
-        return valid if valid else [0]
-    except ValueError:
-        return [get_compute_gpu()]
+        requested_physical = [int(value.strip()) for value in gpu_arg.split(",")]
+    except ValueError as error:
+        raise ValueError(
+            f"Invalid GPU selection '{gpu_arg}'. Use auto, all, or comma-separated indices."
+        ) from error
+
+    physical_to_visible = {
+        physical: visible
+        for visible, physical in enumerate(get_visible_physical_indices(device_count))
+    }
+    invalid = [index for index in requested_physical if index not in physical_to_visible]
+    if invalid:
+        visible_physical = ", ".join(str(index) for index in sorted(physical_to_visible))
+        raise ValueError(
+            f"Physical GPU index {invalid[0]} is not visible. Available physical GPUs: "
+            f"{visible_physical or 'none'}."
+        )
+    return [physical_to_visible[index] for index in requested_physical]
 
 
 def get_cuda_visible_devices(gpu_indices: List[int]) -> str:
@@ -448,7 +591,7 @@ def get_multi_gpu_kwargs(
     The function checks HFTOOL_MULTI_GPU environment variable:
     - "1", "true", "yes", "balanced": Enable multi-GPU distribution
     - "0", "false", "no": Disable multi-GPU (single GPU or CPU offload)
-    - unset: Auto-enable if multiple GPUs available
+    - unset: Keep single-GPU mode; multi-GPU requires explicit opt-in
 
     IMPORTANT: By default, CPU is NOT included in the device map to prevent
     critical components (like text_encoder) from being placed on CPU, which

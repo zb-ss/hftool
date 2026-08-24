@@ -5,8 +5,7 @@ Handles loading various input types: text, images, audio, video, URLs.
 
 import os
 from enum import Enum, auto
-from typing import Any, Optional, Union
-from pathlib import Path
+from typing import Any, Optional
 
 
 def translate_docker_path(path: str) -> str:
@@ -25,7 +24,7 @@ def translate_docker_path(path: str) -> str:
 
     Environment Variables Used:
         HFTOOL_IN_DOCKER: Set to "1" when running in Docker
-        HFTOOL_REAL_HOME: Original host home path (e.g., /home/zashboy)
+        HFTOOL_REAL_HOME: Original host home path (e.g., /home/user)
         HFTOOL_HOST_HOME: Container mount point (e.g., /home/host)
     """
     # Only translate in Docker environment

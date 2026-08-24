@@ -187,11 +187,14 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 ### Automatic GPU Selection
 
-hftool automatically selects the best GPU for compute:
+hftool ranks visible GPUs by live system-wide free VRAM, the selected model's
+catalog minimum, a configurable safety reserve, and display pressure. A
+non-display card is preferred when headroom is otherwise comparable, but an
+adequate display card wins over an inadequate compute card:
 
 ```bash
-# Auto-select (avoids display GPU)
-hftool -t t2i -i "A cat" -o cat.png
+# Auto-select with live headroom and model requirements
+hftool -t t2i -m flux2-klein-4b -i "A cat" -o cat.png --gpu auto
 
 # Use all GPUs for large models
 hftool -t t2v -m hunyuan -i "A cat" -o cat.mp4 --gpu all
@@ -212,14 +215,20 @@ export HFTOOL_GPU=1
 
 ### Display GPU Avoidance
 
-hftool detects which GPU has displays connected and avoids it by default:
+hftool detects which GPU has displays connected and applies a selection penalty:
 
 ```
 GPU 0: RX 7900 XTX (24GB) - Display connected ← Desktop/Gaming
 GPU 1: RX 7900 XT (20GB) - No display ← Compute (selected)
 ```
 
-This prevents VRAM conflicts with your desktop compositor.
+The TUI shows each physical index, its PyTorch-visible `cuda:N` index, live
+free/total VRAM, display attachment, and the automatic choice. If no single GPU
+meets the model minimum plus reserve, generation fails before a download or
+pipeline load and suggests freeing VRAM, explicit multi-GPU, or CPU offload.
+
+`--gpu all` is explicit opt-in to model sharding. Merely exposing two GPUs to
+the Dockerized TUI does not enable multi-GPU execution.
 
 ---
 
@@ -244,9 +253,10 @@ hftool -t t2i -m sdxl-turbo -i "A cat" -o cat.png  # 8GB friendly
 
 | Task | Model | Approximate VRAM |
 |------|-------|------------------|
-| text-to-image | Z-Image | 8GB |
-| text-to-image | SDXL | 10GB |
-| text-to-image | FLUX.1-schnell | 16GB |
+| text-to-image | SANA Sprint 1.6B | 10 GB minimum |
+| text-to-image | FLUX.2 Klein 4B | 13 GB minimum |
+| text-to-image | Z-Image Turbo | 16 GB minimum |
+| text-to-image | Qwen Image 2512 | 24 GB minimum; offload/sharding may be needed |
 | text-to-video | LTX-2 | 16GB |
 | text-to-video | HunyuanVideo | 40GB+ (multi-GPU) |
 

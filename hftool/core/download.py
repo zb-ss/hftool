@@ -8,11 +8,31 @@ Handles downloading models from HuggingFace Hub with:
 """
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional, Callable, List, Dict
 
 import click
+
+
+_REVISION_MARKER = ".hftool-revision"
+
+
+def _revision_matches(model_path: Path, revision: Optional[str]) -> bool:
+    """Return whether a local model directory matches a pinned revision."""
+    if revision is None:
+        return True
+    try:
+        return (model_path / _REVISION_MARKER).read_text(encoding="utf-8").strip() == revision
+    except OSError:
+        return False
+
+
+def _record_revision(model_path: Path, revision: Optional[str]) -> None:
+    """Record the immutable catalog revision after a successful download."""
+    if revision is not None:
+        (model_path / _REVISION_MARKER).write_text(f"{revision}\n", encoding="utf-8")
 
 
 def get_models_dir() -> Path:
@@ -47,7 +67,7 @@ def get_model_path(repo_id: str) -> Path:
     return models_dir / safe_name
 
 
-def is_model_downloaded(repo_id: str) -> bool:
+def is_model_downloaded(repo_id: str, revision: Optional[str] = None) -> bool:
     """Check if a model has been downloaded completely.
 
     Args:
@@ -59,6 +79,8 @@ def is_model_downloaded(repo_id: str) -> bool:
     model_path = get_model_path(repo_id)
 
     if not model_path.exists():
+        return False
+    if not _revision_matches(model_path, revision):
         return False
 
     # Check for common model files - at least one must exist for a valid download
@@ -72,7 +94,7 @@ def is_model_downloaded(repo_id: str) -> bool:
     return False
 
 
-def get_download_status(repo_id: str) -> str:
+def get_download_status(repo_id: str, revision: Optional[str] = None) -> str:
     """Get download status string for display.
     
     Args:
@@ -85,6 +107,8 @@ def get_download_status(repo_id: str) -> str:
     
     if not model_path.exists():
         return "not downloaded"
+    if not _revision_matches(model_path, revision):
+        return "partial"
     
     # Check for config file (indicates complete download)
     config_files = ["config.json", "model_index.json"]
@@ -196,14 +220,14 @@ def download_model(
     model_path = get_model_path(repo_id)
 
     # Check if already downloaded
-    if not force and is_model_downloaded(repo_id):
+    if not force and is_model_downloaded(repo_id, revision):
         return model_path
 
     # Create models directory
     model_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Set up ignore patterns
-    patterns = ignore_patterns or []
+    patterns = list(ignore_patterns or [])
     # Only ignore root-level documentation files
     # DO NOT ignore *.txt - tokenizers need merges.txt
     # DO NOT ignore *.safetensors.index.json - sharded models need these
@@ -243,7 +267,9 @@ def download_model(
             ) from e
         raise
 
-    return Path(downloaded_path)
+    resolved_path = Path(downloaded_path)
+    _record_revision(resolved_path, revision)
+    return resolved_path
 
 
 def check_dependency_satisfied(dep: str) -> bool:
@@ -281,12 +307,36 @@ def check_dependency_satisfied(dep: str) -> bool:
         req = Requirement(dep)
         try:
             installed_version = Version(importlib.metadata.version(req.name))
-            return installed_version in req.specifier
+            # prereleases=True so dev/pre-release builds (e.g. diffusers
+            # "0.38.0.dev0" installed from git main in the Docker image)
+            # satisfy a ">=" spec. Without it, packaging excludes
+            # pre-releases by default and we'd wrongly attempt a reinstall.
+            return req.specifier.contains(installed_version, prereleases=True)
         except importlib.metadata.PackageNotFoundError:
             return False
     except (ImportError, Exception):
         # packaging not available or parse error, assume not satisfied to be safe
         return False
+
+
+def _clear_dependency_cache():
+    """Clear the dependency check cache after installing new packages."""
+    try:
+        from hftool.utils.deps import _DEPENDENCY_CACHE
+        _DEPENDENCY_CACHE.clear()
+    except (ImportError, AttributeError):
+        pass
+
+
+def _running_in_pipx_hftool_env() -> bool:
+    """Return True when current Python belongs to pipx-managed hftool venv."""
+    exe_parts = [part.lower() for part in Path(sys.executable).resolve().parts]
+    prefix_parts = [part.lower() for part in Path(sys.prefix).resolve().parts]
+
+    def _looks_like_pipx_hftool(parts: List[str]) -> bool:
+        return "pipx" in parts and "venvs" in parts and "hftool" in parts
+
+    return _looks_like_pipx_hftool(exe_parts) or _looks_like_pipx_hftool(prefix_parts)
 
 
 def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, force: bool = False) -> bool:
@@ -315,51 +365,403 @@ def install_pip_dependencies(dependencies: List[str], use_pipx: bool = True, for
     
     click.echo(f"Installing/upgrading dependencies: {', '.join(dependencies)}")
     
-    # Try pipx inject first (if hftool was installed via pipx)
-    if use_pipx and shutil.which("pipx"):
+    # Try pipx inject first only when this process is running inside pipx's hftool venv.
+    # Otherwise pipx may install into a different environment than the active interpreter.
+    should_use_pipx = use_pipx and shutil.which("pipx") and _running_in_pipx_hftool_env()
+
+    if should_use_pipx:
         try:
-            # Check if hftool is installed via pipx
-            result = subprocess.run(
-                ["pipx", "list", "--short"],
-                capture_output=True,
-                text=True,
-            )
-            if "hftool" in result.stdout:
-                # Use pipx runpip to install into hftool's venv
-                for dep in dependencies:
-                    click.echo(f"  Upgrading {dep} via pipx...")
-                    install_cmd = ["pipx", "runpip", "hftool", "install", "--upgrade", dep]
-                    # flash-attn needs special handling
-                    if "flash-attn" in dep:
-                        install_cmd.extend(["--no-build-isolation"])
-                    
-                    proc = subprocess.run(install_cmd, capture_output=True, text=True)
-                    if proc.returncode != 0:
-                        click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
-                    else:
-                        click.echo(f"    Installed {dep}")
+            failed_deps = []
+            for dep in dependencies:
+                click.echo(f"  Upgrading {dep} via pipx...")
+                install_cmd = ["pipx", "runpip", "hftool", "install", "--upgrade", dep]
+                # flash-attn needs special handling
+                if "flash-attn" in dep:
+                    install_cmd.extend(["--no-build-isolation"])
+
+                proc = subprocess.run(install_cmd, capture_output=True, text=True)
+                if proc.returncode != 0:
+                    failed_deps.append(dep)
+                    click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
+                else:
+                    click.echo(f"    Installed {dep}")
+
+            if not failed_deps:
+                _clear_dependency_cache()
                 return True
+
+            click.echo(
+                f"  pipx install failed for: {', '.join(failed_deps)}; falling back to pip",
+                err=True,
+            )
+            dependencies = failed_deps
         except Exception as e:
             click.echo(f"  pipx injection failed: {e}, falling back to pip", err=True)
-    
+    elif use_pipx and shutil.which("pipx") and not _running_in_pipx_hftool_env():
+        click.echo("  pipx detected but current runtime is not pipx hftool; using pip", err=True)
+
     # Fall back to regular pip via subprocess (more reliable than pip.main)
+    constraints_file = _write_torch_constraints()
     try:
-        import sys
+        failed_deps = []
         for dep in dependencies:
             click.echo(f"  Upgrading {dep} via pip...")
             install_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", dep]
+            if constraints_file:
+                install_cmd.extend(["-c", constraints_file])
             if "flash-attn" in dep:
                 install_cmd.append("--no-build-isolation")
             proc = subprocess.run(install_cmd, capture_output=True, text=True)
+
+            # Torch constraint conflict — the package depends on a
+            # different torch version.  Install with --no-deps to avoid
+            # overwriting ROCm PyTorch, then install its non-torch
+            # sub-dependencies separately.
+            if (
+                proc.returncode != 0
+                and constraints_file
+                and "conflicting" in (proc.stderr or "").lower()
+            ):
+                click.echo(
+                    f"    Torch version conflict detected — installing {dep} "
+                    f"without replacing PyTorch...",
+                    err=True,
+                )
+                proc = _install_with_torch_protection(dep, constraints_file)
+
+            # Debian/Ubuntu externally-managed Python (PEP 668): retry explicitly.
+            if (
+                proc.returncode != 0
+                and "externally-managed-environment" in (proc.stderr or "").lower()
+            ):
+                click.echo(
+                    "    Externally managed Python detected, retrying with --break-system-packages...",
+                    err=True,
+                )
+                retry_cmd = install_cmd + ["--break-system-packages"]
+                proc = subprocess.run(retry_cmd, capture_output=True, text=True)
+
             if proc.returncode != 0:
+                failed_deps.append(dep)
                 click.echo(f"    Warning: Failed to install {dep}: {proc.stderr}", err=True)
             else:
                 click.echo(f"    Installed {dep}")
+
+        if failed_deps:
+            click.echo(
+                f"  Failed to install required dependencies: {', '.join(failed_deps)}",
+                err=True,
+            )
+            click.echo(
+                f"  Please install manually: pip install --upgrade {' '.join(failed_deps)}",
+                err=True,
+            )
+            return False
+
+        # Clear dependency cache so check_dependency re-checks after install
+        _clear_dependency_cache()
         return True
     except Exception as e:
         click.echo(f"  pip installation failed: {e}", err=True)
         click.echo(f"  Please install manually: pip install --upgrade {' '.join(dependencies)}")
         return False
+    finally:
+        if constraints_file:
+            try:
+                os.remove(constraints_file)
+            except OSError:
+                pass
+
+
+def _write_torch_constraints() -> Optional[str]:
+    """Create a temporary pip constraints file that pins the current PyTorch.
+
+    When installing model dependencies at runtime (e.g., ``chatterbox-tts``),
+    pip may try to replace the existing ROCm PyTorch with a CUDA build from
+    PyPI.  A constraints file tells pip "these packages must stay at their
+    current versions", preventing silent overwrites.
+
+    Returns:
+        Path to the temporary constraints file, or None if torch isn't
+        installed (nothing to protect).
+    """
+    import importlib.metadata
+    import tempfile
+
+    pins: list[str] = []
+    for pkg in ("torch", "torchaudio", "torchvision"):
+        try:
+            version = importlib.metadata.version(pkg)
+            pins.append(f"{pkg}=={version}")
+        except importlib.metadata.PackageNotFoundError:
+            pass
+
+    if not pins:
+        return None
+
+    fd, path = tempfile.mkstemp(prefix="hftool_torch_constraints_", suffix=".txt")
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(pins) + "\n")
+    return path
+
+
+def _install_with_torch_protection(dep: str, constraints_file: str) -> subprocess.CompletedProcess:
+    """Install a package without letting it replace PyTorch.
+
+    Strategy:
+    1. Install the main package with ``--no-deps``
+    2. Read its declared dependencies from package metadata
+    3. Install non-torch dependencies (with constraints to protect PyTorch
+       transitively as well)
+
+    Args:
+        dep: Package spec to install (e.g., "chatterbox-tts")
+        constraints_file: Path to torch constraints file
+
+    Returns:
+        CompletedProcess from the final install step
+    """
+    import importlib.metadata
+
+    # Step 1: install main package without any dependencies
+    nodeps_cmd = [sys.executable, "-m", "pip", "install", "--no-deps", dep]
+    proc = subprocess.run(nodeps_cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return proc
+
+    # Step 2: discover its declared sub-dependencies
+    pkg_name = dep.split("[")[0].split(">=")[0].split("==")[0].split("<")[0].strip()
+    try:
+        requires = importlib.metadata.requires(pkg_name) or []
+    except importlib.metadata.PackageNotFoundError:
+        # Package installed but metadata not found — best effort
+        return proc
+
+    # Step 3: filter out torch ecosystem packages
+    _torch_pkgs = frozenset({
+        "torch", "torchaudio", "torchvision", "triton",
+        "nvidia-cublas-cu12", "nvidia-cuda-cupti-cu12",
+        "nvidia-cuda-nvrtc-cu12", "nvidia-cuda-runtime-cu12",
+        "nvidia-cudnn-cu12", "nvidia-cufft-cu12", "nvidia-curand-cu12",
+        "nvidia-cusolver-cu12", "nvidia-cusparse-cu12",
+        "nvidia-cusparselt-cu12", "nvidia-nccl-cu12",
+        "nvidia-nvjitlink-cu12", "nvidia-nvtx-cu12",
+    })
+
+    safe_deps: list[str] = []
+    for req_str in requires:
+        # Skip extras-conditional deps (e.g., "foo ; extra == 'dev'")
+        if "extra ==" in req_str:
+            continue
+        # Extract bare package name
+        name = req_str.split(";")[0].split("[")[0].split(">=")[0].split("==")[0].split("<")[0].split("!")[0].strip()
+        if name.lower() not in _torch_pkgs and not name.lower().startswith("nvidia-"):
+            safe_deps.append(req_str.split(";")[0].strip())
+
+    if not safe_deps:
+        return proc
+
+    click.echo(f"    Installing {len(safe_deps)} sub-dependencies (torch protected)...")
+
+    _install_deps_recursive(safe_deps, constraints_file, _torch_pkgs, max_rounds=3)
+
+    return proc  # Return success from the main --no-deps install
+
+
+def _install_deps_recursive(
+    deps: list[str],
+    constraints_file: str,
+    protected_pkgs: frozenset,
+    max_rounds: int = 3,
+) -> None:
+    """Install dependencies, chasing transitive deps up to *max_rounds*.
+
+    For each dep:
+    1. Try ``pip install dep -c constraints`` (fast, respects torch pins).
+    2. On conflict, fall back to ``pip install --no-deps dep`` and queue
+       its own sub-deps for the next round.
+
+    Converges in 2-3 rounds for most packages.
+    """
+    import importlib.metadata
+
+    pending = list(deps)
+
+    for round_num in range(max_rounds):
+        if not pending:
+            break
+        next_round: list[str] = []
+
+        for subdep in pending:
+            name = (
+                subdep.split(";")[0].split("[")[0].split(">=")[0]
+                .split("==")[0].split("<")[0].split("!")[0].strip().lower()
+            )
+            if name in protected_pkgs or name.startswith("nvidia-"):
+                continue
+
+            # Already installed?
+            try:
+                importlib.metadata.version(name)
+                continue
+            except importlib.metadata.PackageNotFoundError:
+                pass
+
+            # Try with constraints first
+            sub_cmd = [
+                sys.executable, "-m", "pip", "install",
+                "-c", constraints_file,
+                subdep.split(";")[0].strip(),
+            ]
+            sub_proc = subprocess.run(sub_cmd, capture_output=True, text=True)
+
+            if sub_proc.returncode != 0:
+                # Conflict — install bare, queue its deps
+                retry_cmd = [
+                    sys.executable, "-m", "pip", "install", "--no-deps",
+                    subdep.split(";")[0].strip(),
+                ]
+                subprocess.run(retry_cmd, capture_output=True, text=True)
+
+                # Queue this package's own deps for next round
+                try:
+                    child_reqs = importlib.metadata.requires(name) or []
+                    for cr in child_reqs:
+                        if "extra ==" not in cr:
+                            next_round.append(cr)
+                except importlib.metadata.PackageNotFoundError:
+                    pass
+
+        pending = next_round
+
+
+def get_model_file_path(repo_id: str, filename: str) -> Path:
+    """Return a safe local path for one repository file."""
+    relative_path = Path(filename)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise ValueError(f"Unsafe model filename: {filename}")
+    return get_model_path(repo_id) / relative_path
+
+
+def get_model_file_status(
+    repo_id: str,
+    filename: str,
+    revision: Optional[str] = None,
+) -> str:
+    """Return download status for one exact adapter or profile file."""
+    file_path = get_model_file_path(repo_id, filename)
+    if (
+        file_path.is_file()
+        and file_path.stat().st_size > 0
+        and _revision_matches(get_model_path(repo_id), revision)
+    ):
+        return "downloaded"
+    if file_path.exists() or file_path.parent.exists():
+        return "partial"
+    return "not downloaded"
+
+
+def get_model_download_status(model_info) -> str:
+    """Return one status for a base model and any exact profile adapter."""
+    base_status = get_download_status(model_info.repo_id, model_info.revision)
+    if model_info.adapter is None:
+        return base_status
+
+    adapter_status = get_model_file_status(
+        model_info.adapter.repo_id,
+        model_info.adapter.weight_name,
+        model_info.adapter.revision,
+    )
+    if base_status == "downloaded" and adapter_status == "downloaded":
+        return "downloaded"
+    if base_status == "not downloaded" and adapter_status == "not downloaded":
+        return "not downloaded"
+    return "partial"
+
+
+def download_model_file_with_progress(
+    repo_id: str,
+    filename: str,
+    size_gb: float,
+    revision: Optional[str] = None,
+    force: bool = False,
+) -> Path:
+    """Download one exact repository file without fetching sibling checkpoints."""
+    destination = get_model_file_path(repo_id, filename)
+    if not force and get_model_file_status(repo_id, filename, revision) == "downloaded":
+        click.echo(f"Model file already downloaded: {repo_id}/{filename}")
+        return destination
+
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as error:
+        raise ImportError(
+            "huggingface_hub is required for downloading model adapters. "
+            "Install with: pip install huggingface_hub"
+        ) from error
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    click.echo(f"Downloading profile file: {repo_id}/{filename}")
+    click.echo(f"Size: ~{size_gb:.2f} GB")
+    try:
+        downloaded_path = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            revision=revision,
+            local_dir=str(get_model_path(repo_id)),
+            force_download=force,
+            token=get_hf_token(),
+        )
+    except Exception as error:
+        error_text = str(error).lower()
+        if any(code in error_text for code in ("401", "403", "gated", "forbidden")):
+            raise RuntimeError(
+                f"Access denied to profile file {repo_id}/{filename}. "
+                "Accept its license and authenticate with huggingface-cli login."
+            ) from error
+        raise
+    resolved_path = Path(downloaded_path)
+    _record_revision(get_model_path(repo_id), revision)
+    return resolved_path
+
+
+def ensure_model_file_available(
+    repo_id: str,
+    filename: str,
+    size_gb: float,
+    task_name: str,
+    model_name: str,
+    auto_download: bool = False,
+    revision: Optional[str] = None,
+) -> Path:
+    """Ensure one exact profile file exists, prompting before a large download."""
+    if get_model_file_status(repo_id, filename, revision) == "downloaded":
+        return get_model_file_path(repo_id, filename)
+
+    auto_env = os.environ.get("HFTOOL_AUTO_DOWNLOAD", "").lower()
+    if auto_env in ("1", "true", "yes"):
+        auto_download = True
+    elif auto_env in ("0", "false", "no"):
+        auto_download = False
+
+    if not auto_download:
+        click.echo("")
+        click.echo(f"Profile adapter not found: {model_name}")
+        click.echo(f"  Repo: {repo_id}")
+        click.echo(f"  File: {filename}")
+        click.echo(f"  Size: ~{size_gb:.2f} GB")
+        if not click.confirm("Download this adapter now?", default=True):
+            raise RuntimeError(
+                f"Adapter download cancelled. Run 'hftool download -t {task_name} "
+                f"-m {model_name}' before generation."
+            )
+
+    return download_model_file_with_progress(
+        repo_id=repo_id,
+        filename=filename,
+        size_gb=size_gb,
+        revision=revision,
+    )
 
 
 def download_model_with_progress(
@@ -387,17 +789,20 @@ def download_model_with_progress(
     """
     # Install pip dependencies first (before download)
     if pip_dependencies:
-        install_pip_dependencies(pip_dependencies)
+        if not install_pip_dependencies(pip_dependencies):
+            raise RuntimeError(
+                f"Failed to install required dependencies for {repo_id}: {', '.join(pip_dependencies)}"
+            )
     
     # Check if already downloaded
-    if not force and is_model_downloaded(repo_id):
+    if not force and is_model_downloaded(repo_id, revision):
         click.echo(f"Model already downloaded: {repo_id}")
         return get_model_path(repo_id)
     
     model_path = get_model_path(repo_id)
     
     # Check if resuming partial download
-    status = get_download_status(repo_id)
+    status = get_download_status(repo_id, revision)
     if status == "partial" and resume:
         click.echo(f"Resuming download: {repo_id}")
     else:
@@ -470,6 +875,8 @@ def prompt_download(
     model_name: str,
     pip_dependencies: Optional[List[str]] = None,
     gated: bool = False,
+    revision: Optional[str] = None,
+    ignore_patterns: Optional[List[str]] = None,
 ) -> Optional[Path]:
     """Prompt user to download a model interactively.
 
@@ -529,6 +936,8 @@ def prompt_download(
             return download_model_with_progress(
                 repo_id=repo_id,
                 size_gb=size_gb,
+                revision=revision,
+                ignore_patterns=ignore_patterns,
                 pip_dependencies=pip_dependencies,
             )
         else:
@@ -551,6 +960,8 @@ def ensure_model_available(
     auto_download: bool = False,
     pip_dependencies: Optional[List[str]] = None,
     gated: bool = False,
+    revision: Optional[str] = None,
+    ignore_patterns: Optional[List[str]] = None,
 ) -> Path:
     """Ensure a model is available, prompting to download if needed.
 
@@ -570,10 +981,14 @@ def ensure_model_available(
         SystemExit: If model not available and user cancelled download
     """
     # Check if already downloaded
-    if is_model_downloaded(repo_id):
+    if is_model_downloaded(repo_id, revision):
         # Still need to install pip dependencies even if model is downloaded
         if pip_dependencies:
-            install_pip_dependencies(pip_dependencies)
+            if not install_pip_dependencies(pip_dependencies):
+                raise RuntimeError(
+                    f"Failed to install required dependencies for {model_name}: "
+                    f"{', '.join(pip_dependencies)}"
+                )
         return get_model_path(repo_id)
 
     # Check environment variable for auto-download behavior
@@ -588,8 +1003,8 @@ def ensure_model_available(
         token = get_hf_token()
         if not token:
             click.echo(click.style("Warning: Gated model requires HuggingFace authentication.", fg="yellow"))
-            click.echo(f"  Run: huggingface-cli login")
-            click.echo(f"  Or set: export HF_TOKEN=your_token_here")
+            click.echo("  Run: huggingface-cli login")
+            click.echo("  Or set: export HF_TOKEN=your_token_here")
             click.echo(f"  Accept license at: https://huggingface.co/{repo_id}")
             click.echo("")
 
@@ -597,6 +1012,8 @@ def ensure_model_available(
         return download_model_with_progress(
             repo_id=repo_id,
             size_gb=size_gb,
+            revision=revision,
+            ignore_patterns=ignore_patterns,
             pip_dependencies=pip_dependencies,
         )
 
@@ -608,6 +1025,8 @@ def ensure_model_available(
         model_name=model_name,
         pip_dependencies=pip_dependencies,
         gated=gated,
+        revision=revision,
+        ignore_patterns=ignore_patterns,
     )
 
     if result is None:
@@ -617,8 +1036,8 @@ def ensure_model_available(
         click.echo("")
         click.echo("Options:")
         click.echo(f"  1. Run: hftool download -t {task_name}")
-        click.echo(f"  2. Set HFTOOL_AUTO_DOWNLOAD=1 to auto-download")
-        click.echo(f"  3. Use a custom model path with -m /path/to/model")
+        click.echo("  2. Set HFTOOL_AUTO_DOWNLOAD=1 to auto-download")
+        click.echo("  3. Use a custom model path with -m /path/to/model")
         if gated:
             click.echo("")
             click.echo("For gated models, also ensure you have:")
